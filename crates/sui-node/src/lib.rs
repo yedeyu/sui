@@ -16,6 +16,7 @@ use narwhal_worker::LazyNarwhalClient;
 use prometheus::Registry;
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fmt;
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::str::FromStr;
 #[cfg(msim)]
@@ -1941,7 +1942,8 @@ pub fn build_http_server(
         router = router.nest("/rest", rest_router);
     }
 
-    let server = axum::Server::bind(&config.json_rpc_address).serve(router.into_make_service());
+    let server = axum::Server::bind(&config.json_rpc_address)
+        .serve(router.into_make_service_with_connect_info::<SocketAddr>());
 
     let addr = server.local_addr();
     let handle = tokio::spawn(async move { server.await.unwrap() });
