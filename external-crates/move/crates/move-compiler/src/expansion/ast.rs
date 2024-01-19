@@ -441,7 +441,7 @@ pub enum MatchPattern_ {
     PositionalConstructor(ModuleAccess, Option<Vec<Type>>, Spanned<Vec<MatchPattern>>),
     FieldConstructor(ModuleAccess, Option<Vec<Type>>, Fields<MatchPattern>),
     HeadConstructor(ModuleAccess, Option<Vec<Type>>),
-    Binder(Var),
+    Binder(Mutability, Var),
     Literal(Value),
     ErrorPat,
     Or(Box<MatchPattern>, Box<MatchPattern>),
@@ -1739,7 +1739,9 @@ impl AstDebug for MatchPattern_ {
                     w.write(">");
                 }
             }
-            Binder(name) => w.write(format!("{}", name)),
+            Binder(mut_, name) => {
+                w.write(format!("{}{}", mut_.map(|_| "mut ").unwrap_or(""), name))
+            }
             Literal(v) => v.ast_debug(w),
             ErrorPat => w.write("_<err>_"),
             Or(lhs, rhs) => {

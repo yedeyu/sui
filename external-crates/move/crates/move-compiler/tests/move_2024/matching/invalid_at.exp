@@ -1,4 +1,4 @@
-error[E03018]: invalud pattern
+error[E03018]: invalid pattern
   ┌─ tests/move_2024/matching/invalid_at.move:9:13
   │
 9 │             _ @ Option::Some(128u8) => (),

@@ -3616,7 +3616,7 @@ fn match_pattern(context: &mut Context, sp!(loc, pat_): P::MatchPattern) -> E::M
                 _ => error_pattern!(),
             }
         }
-        PP::Name(name_chain, pts_opt) => {
+        PP::Name(mut_, name_chain, pts_opt) => {
             let head_ctor_name = context
                 .name_access_chain_to_module_access(Access::Variant, name_chain)
                 .and_then(|name| head_ctor_okay(context, name, true));
@@ -3635,7 +3635,7 @@ fn match_pattern(context: &mut Context, sp!(loc, pat_): P::MatchPattern) -> E::M
                             .add_diag(diag!(Declarations::InvalidName, (name.loc, msg)));
                         error_pattern!()
                     } else {
-                        sp(loc, EP::Binder(Var(name)))
+                        sp(loc, EP::Binder(mut_, Var(name)))
                     }
                 }
                 Some(head_ctor_name @ sp!(_, EM::Variant(_, _))) => {

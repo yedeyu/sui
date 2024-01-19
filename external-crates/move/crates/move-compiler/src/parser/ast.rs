@@ -771,7 +771,7 @@ pub enum MatchPattern_ {
         Spanned<Vec<(Field, MatchPattern)>>,
     ),
     // T<t1, ..., tn>
-    Name(NameAccessChain, Option<Vec<Type>>),
+    Name(Mutability, NameAccessChain, Option<Vec<Type>>),
     // 0 | true | ...
     Literal(Value),
     // pat1 | pat2
@@ -2163,11 +2163,14 @@ impl AstDebug for MatchPattern_ {
                 });
                 w.write("} ");
             }
-            Name(name, tys_opt) => {
+            Name(mut_, name, tys_opt) => {
                 if let Some(ss) = tys_opt {
                     w.write("<");
                     ss.ast_debug(w);
                     w.write(">");
+                }
+                if mut_.is_some() {
+                    w.write("mut ");
                 }
                 name.ast_debug(w)
             }
