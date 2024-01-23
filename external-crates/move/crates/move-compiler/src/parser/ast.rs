@@ -504,8 +504,8 @@ pub type Mutability = Option<Loc>;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum FieldBindings {
-    Named(Vec<(Field, Bind)>),
-    Positional(Vec<Bind>),
+    Named(Vec<Ellipsis<(Field, Bind)>>),
+    Positional(Vec<Ellipsis<Bind>>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -757,18 +757,24 @@ pub struct MatchArm_ {
 pub type MatchArm = Spanned<MatchArm_>;
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum Ellipsis<T> {
+    Binder(T),
+    Ellipsis(Loc),
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum MatchPattern_ {
     // T<t1, ..., tn>(pat1, ..., patn)
     PositionalConstructor(
         NameAccessChain,
         Option<Vec<Type>>,
-        Spanned<Vec<MatchPattern>>,
+        Spanned<Vec<Ellipsis<MatchPattern>>>,
     ),
     // T<t1, ..., tn> { x1: pat1, ..., xn: patn }
     FieldConstructor(
         NameAccessChain,
         Option<Vec<Type>>,
-        Spanned<Vec<(Field, MatchPattern)>>,
+        Spanned<Vec<Ellipsis<(Field, MatchPattern)>>>,
     ),
     // T<t1, ..., tn>
     Name(Mutability, NameAccessChain, Option<Vec<Type>>),
@@ -2132,6 +2138,31 @@ impl AstDebug for MatchArm_ {
     }
 }
 
+impl<T: AstDebug> AstDebug for Ellipsis<T> {
+    fn ast_debug(&self, w: &mut AstWriter) {
+        match self {
+            Ellipsis::Ellipsis(_) => {
+                w.write("..");
+            }
+            Ellipsis::Binder(p) => p.ast_debug(w),
+        }
+    }
+}
+
+impl AstDebug for Ellipsis<(Field, MatchPattern)> {
+    fn ast_debug(&self, w: &mut AstWriter) {
+        match self {
+            Ellipsis::Ellipsis(_) => {
+                w.write("..");
+            }
+            Ellipsis::Binder((n, p)) => {
+                w.write(&format!("{}: ", n));
+                p.ast_debug(w);
+            }
+        }
+    }
+}
+
 impl AstDebug for MatchPattern_ {
     fn ast_debug(&self, w: &mut AstWriter) {
         use MatchPattern_::*;
@@ -2157,10 +2188,7 @@ impl AstDebug for MatchPattern_ {
                     w.write(">");
                 }
                 w.write(" {");
-                w.comma(fields.value.iter(), |w, (field, pat)| {
-                    w.write(format!(" {} : ", field));
-                    pat.ast_debug(w);
-                });
+                w.comma(fields.value.iter(), |w, field_pat| field_pat.ast_debug(w));
                 w.write("} ");
             }
             Name(mut_, name, tys_opt) => {
@@ -2305,14 +2333,27 @@ impl AstDebug for LambdaBindings_ {
     }
 }
 
+impl AstDebug for Ellipsis<(Field, Bind)> {
+    fn ast_debug(&self, w: &mut AstWriter) {
+        match self {
+            Ellipsis::Ellipsis(_) => {
+                w.write("..");
+            }
+            Ellipsis::Binder((n, b)) => {
+                w.write(&format!("{}: ", n));
+                b.ast_debug(w);
+            }
+        }
+    }
+}
+
 impl AstDebug for FieldBindings {
     fn ast_debug(&self, w: &mut AstWriter) {
         match self {
             FieldBindings::Named(bs) => {
                 w.write("{");
-                w.comma(bs, |w, (f, b)| {
-                    w.write(&format!("{}: ", f));
-                    b.ast_debug(w);
+                w.comma(bs, |w, e| {
+                    e.ast_debug(w);
                 });
                 w.write("}");
             }
