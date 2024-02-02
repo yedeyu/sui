@@ -777,11 +777,9 @@ async fn init_zklogin_transfer(
 fn make_request_metadata() -> tonic::metadata::MetadataMap {
     let client_addr = SocketAddr::new([127, 0, 0, 1].into(), 0);
     let mut metadata = tonic::metadata::MetadataMap::new();
-    info!("TESTING -- client_addr: {}", client_addr);
     let value =
         MetadataValue::from_str(client_addr.to_string().as_str()).expect("Invalid metadata value");
     metadata.insert("x-forwarded-for", value);
-    info!("TESTING -- finished inserting metadata");
     metadata
 }
 

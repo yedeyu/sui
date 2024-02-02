@@ -150,7 +150,7 @@ impl<A: Clone> QuorumDriver<A> {
             );
             return Ok(());
         }
-        self.backoff_and_enqueue(transaction, tx_cert, old_retry_times)
+        self.backoff_and_enqueue(transaction, tx_cert, old_retry_times, client_addr)
             .await
     }
 
@@ -160,6 +160,7 @@ impl<A: Clone> QuorumDriver<A> {
         transaction: Transaction,
         tx_cert: Option<CertifiedTransaction>,
         old_retry_times: u32,
+        client_addr: Option<SocketAddr>,
     ) -> SuiResult<()> {
         let next_retry_after =
             Instant::now() + Duration::from_millis(200 * u64::pow(2, old_retry_times));
@@ -857,7 +858,8 @@ where
                 spawn_monitored_task!(quorum_driver.backoff_and_enqueue(
                     transaction.clone(),
                     tx_cert,
-                    old_retry_times
+                    old_retry_times,
+                    client_addr,
                 ));
             }
             Some(qd_error) => {

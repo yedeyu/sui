@@ -567,6 +567,9 @@ pub enum SuiError {
     #[error("{1} - {0}")]
     RpcError(String, String),
 
+    #[error("Method not allowed")]
+    InvalidRpcMethodError,
+
     #[error("Use of disabled feature: {:?}", error)]
     UnsupportedFeatureError { error: String },
 

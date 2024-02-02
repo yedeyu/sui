@@ -13875,6 +13875,7 @@ dependencies = [
  "bcs",
  "bincode",
  "byteorder",
+ "chrono",
  "consensus-config",
  "criterion",
  "derivative",
