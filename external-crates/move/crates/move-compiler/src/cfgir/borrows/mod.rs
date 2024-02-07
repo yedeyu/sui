@@ -15,7 +15,6 @@ use crate::{
     parser::ast::BinOp_,
     shared::{unique_map::UniqueMap, CompilationEnv},
 };
-
 use state::{Value, *};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
