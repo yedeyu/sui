@@ -27,7 +27,7 @@ use sui_types::messages_checkpoint::{VerifiedCheckpoint, VerifiedCheckpointConte
 use sui_types::messages_grpc::HandleTransactionResponse;
 use sui_types::mock_checkpoint_builder::{MockCheckpointBuilder, ValidatorKeypairProvider};
 use sui_types::object::Object;
-use sui_types::traffic_control::{PolicyConfig, RemoteFirewallConfig};
+use sui_types::traffic_control::RemoteFirewallConfig;
 use sui_types::transaction::{
     CertifiedTransaction, Transaction, TransactionDataAPI, VerifiedCertificate,
     VerifiedTransaction, DEFAULT_VALIDATOR_GAS_PRICE,
@@ -79,7 +79,7 @@ impl SingleValidator {
                 // TODO: for validator benchmarking purposes, we should allow for this
                 // to be configurable and introduce traffic control benchmarks to test
                 // against different policies
-                PolicyConfig::default(),
+                None, /* PolicyConfig */
                 RemoteFirewallConfig::default(),
             )
             .await,

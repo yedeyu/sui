@@ -12065,7 +12065,14 @@ dependencies = [
  "im",
  "indexmap 2.2.5",
  "itertools 0.10.5",
+<<<<<<< HEAD
  "lru 0.10.1",
+||||||| parent of c9466a4876 ([core/networking] Introduce traffic control on fullnodes])
+ "lru 0.10.0",
+=======
+ "jsonrpsee",
+ "lru 0.10.0",
+>>>>>>> c9466a4876 ([core/networking] Introduce traffic control on fullnodes])
  "mockall",
  "moka",
  "more-asserts",
@@ -12629,6 +12636,7 @@ dependencies = [
  "axum",
  "bcs",
  "cached",
+ "chrono",
  "expect-test",
  "eyre",
  "fastcrypto",
@@ -13898,6 +13906,7 @@ dependencies = [
  "im",
  "indexmap 2.2.5",
  "itertools 0.10.5",
+ "jsonrpsee",
  "move-binary-format",
  "move-bytecode-utils",
  "move-command-line-common",
