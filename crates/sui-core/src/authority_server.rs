@@ -626,7 +626,7 @@ impl ValidatorService {
     ) -> Result<(), tonic::Status> {
         if !self.traffic_controller.check(connection_ip, proxy_ip).await {
             // Entity in blocklist
-            Err(tonic::Status::resource_exhausted("Too many requests"))
+            Err(tonic::Status::from_error(SuiError::TooManyRequests.into()))
         } else {
             Ok(())
         }

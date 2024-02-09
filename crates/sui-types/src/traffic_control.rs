@@ -25,11 +25,22 @@ pub enum PolicyType {
     /// Does nothing
     #[default]
     NoOp,
-    /// Simple policy that blocks IP when any error code in
-    /// `tallyable_error_codes` is encountered 3 times in a row
-    SimpleErrorTest,
+
+    /* Below this point are test policies, and thus should not be used in production */
+    ///
+    /// Simple policy that adds connection_ip to blocklist when the same connection_ip
+    /// is encountered 3 times
+    Test3ConnIP,
+    /// Test policy that inspects the proxy_ip and connection_ip to ensure they are present
+    /// in the tally. Tests IP forwarding. To be used only in tests that submit transactions
+    /// through a client
+    TestInspectIp,
+    /// Test policy that panics when invoked. To be used as an error policy in tests that do
+    /// not expect request errors in order to verify that the error policy is not invoked
+    TestPanicOnInvocation,
 }
 
+#[derive(Clone, Debug, Default)]
 pub struct PolicyResponse {
     pub block_connection_ip: bool,
     pub block_proxy_ip: bool,
@@ -47,21 +58,27 @@ pub trait Policy {
 #[derive(Clone)]
 pub enum TrafficControlPolicy {
     NoOp(NoOpPolicy),
-    SimpleErrorTest(SimpleErrorTestPolicy),
+    Test3ConnIP(Test3ConnIPPolicy),
+    TestInspectIp(TestInspectIpPolicy),
+    TestPanicOnInvocation(TestPanicOnInvocationPolicy),
 }
 
 impl Policy for TrafficControlPolicy {
     fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse {
         match self {
             TrafficControlPolicy::NoOp(policy) => policy.handle_tally(tally),
-            TrafficControlPolicy::SimpleErrorTest(policy) => policy.handle_tally(tally),
+            TrafficControlPolicy::Test3ConnIP(policy) => policy.handle_tally(tally),
+            TrafficControlPolicy::TestInspectIp(policy) => policy.handle_tally(tally),
+            TrafficControlPolicy::TestPanicOnInvocation(policy) => policy.handle_tally(tally),
         }
     }
 
     fn policy_config(&self) -> &PolicyConfig {
         match self {
             TrafficControlPolicy::NoOp(policy) => policy.policy_config(),
-            TrafficControlPolicy::SimpleErrorTest(policy) => policy.policy_config(),
+            TrafficControlPolicy::Test3ConnIP(policy) => policy.policy_config(),
+            TrafficControlPolicy::TestInspectIp(policy) => policy.policy_config(),
+            TrafficControlPolicy::TestPanicOnInvocation(policy) => policy.policy_config(),
         }
     }
 }
@@ -70,8 +87,8 @@ impl Policy for TrafficControlPolicy {
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 pub struct PolicyConfig {
     pub tallyable_error_codes: Vec<SuiError>,
-    pub remote_blocklist_ttl_sec: u64,
-    pub end_user_blocklist_ttl_sec: u64,
+    pub connection_blocklist_ttl_sec: u64,
+    pub proxy_blocklist_ttl_sec: u64,
     pub spam_policy_type: PolicyType,
     pub error_policy_type: PolicyType,
     pub channel_capacity: usize,
@@ -89,9 +106,15 @@ impl PolicyConfig {
     fn to_policy(&self, policy_type: &PolicyType) -> TrafficControlPolicy {
         match policy_type {
             PolicyType::NoOp => TrafficControlPolicy::NoOp(NoOpPolicy::new(self.clone())),
-            PolicyType::SimpleErrorTest => {
-                TrafficControlPolicy::SimpleErrorTest(SimpleErrorTestPolicy::new(self.clone()))
+            PolicyType::Test3ConnIP => {
+                TrafficControlPolicy::Test3ConnIP(Test3ConnIPPolicy::new(self.clone()))
             }
+            PolicyType::TestInspectIp => {
+                TrafficControlPolicy::TestInspectIp(TestInspectIpPolicy::new(self.clone()))
+            }
+            PolicyType::TestPanicOnInvocation => TrafficControlPolicy::TestPanicOnInvocation(
+                TestPanicOnInvocationPolicy::new(self.clone()),
+            ),
         }
     }
 }
@@ -107,10 +130,7 @@ impl NoOpPolicy {
     }
 
     fn handle_tally(&mut self, _tally: TrafficTally) -> PolicyResponse {
-        PolicyResponse {
-            block_connection_ip: false,
-            block_proxy_ip: false,
-        }
+        PolicyResponse::default()
     }
 
     fn policy_config(&self) -> &PolicyConfig {
@@ -118,13 +138,15 @@ impl NoOpPolicy {
     }
 }
 
+////////////// *** Test policies below this point *** //////////////
+
 #[derive(Clone)]
-pub struct SimpleErrorTestPolicy {
+pub struct Test3ConnIPPolicy {
     config: PolicyConfig,
     frequencies: HashMap<SocketAddr, u64>,
 }
 
-impl SimpleErrorTestPolicy {
+impl Test3ConnIPPolicy {
     pub fn new(config: PolicyConfig) -> Self {
         Self {
             config,
@@ -140,9 +162,51 @@ impl SimpleErrorTestPolicy {
             .or_insert(0);
         *count += 1;
         PolicyResponse {
-            block_connection_ip: false,
-            block_proxy_ip: *count >= 3,
+            block_connection_ip: *count >= 3,
+            block_proxy_ip: false,
         }
+    }
+
+    fn policy_config(&self) -> &PolicyConfig {
+        &self.config
+    }
+}
+
+#[derive(Clone)]
+pub struct TestInspectIpPolicy {
+    config: PolicyConfig,
+}
+
+impl TestInspectIpPolicy {
+    pub fn new(config: PolicyConfig) -> Self {
+        Self { config }
+    }
+
+    fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse {
+        assert!(tally.proxy_ip.is_some(), "Expected proxy_ip to be present");
+        PolicyResponse {
+            block_connection_ip: false,
+            block_proxy_ip: false,
+        }
+    }
+
+    fn policy_config(&self) -> &PolicyConfig {
+        &self.config
+    }
+}
+
+#[derive(Clone)]
+pub struct TestPanicOnInvocationPolicy {
+    config: PolicyConfig,
+}
+
+impl TestPanicOnInvocationPolicy {
+    pub fn new(config: PolicyConfig) -> Self {
+        Self { config }
+    }
+
+    fn handle_tally(&mut self, _: TrafficTally) -> PolicyResponse {
+        panic!("This policy should never be invoked")
     }
 
     fn policy_config(&self) -> &PolicyConfig {

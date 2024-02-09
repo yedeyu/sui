@@ -83,10 +83,7 @@ impl TrafficController {
         };
 
         let now = Utc::now();
-        let expiration = {
-            let expiry = blocklist.read();
-            expiry.get(&ip).map(|expiry| expiry.clone())
-        };
+        let expiration = blocklist.read().get(&ip).copied();
         match expiration {
             Some(expiration) if now >= expiration => {
                 blocklist.write().remove(&ip);
@@ -105,14 +102,14 @@ async fn run_tally_loop(
 ) {
     let mut spam_policy = policy_config.clone().to_spam_policy();
     let mut error_policy = policy_config.clone().to_error_policy();
+    let spam_blocklists = Arc::new(blocklists.clone());
+    let error_blocklists = Arc::new(blocklists);
     loop {
         tokio::select! {
             received = receiver.recv() => match received {
                 Some(tally) => {
-                    handle_spam_tally(&mut spam_policy, &policy_config, tally.clone(), blocklists.clone()).await;
-                    if tally.clone().result.is_err() {
-                        handle_error_tally(&mut error_policy, &policy_config, tally, blocklists.clone()).await;
-                    }
+                    handle_spam_tally(&mut spam_policy, &policy_config, tally.clone(), spam_blocklists.clone()).await;
+                    handle_error_tally(&mut error_policy, &policy_config, tally, error_blocklists.clone()).await;
                 }
                 None => {
                     panic!("TrafficController tally channel closed unexpectedly");
@@ -126,7 +123,7 @@ async fn handle_error_tally(
     policy: &mut TrafficControlPolicy,
     config: &PolicyConfig,
     tally: TrafficTally,
-    blocklists: Blocklists,
+    blocklists: Arc<Blocklists>,
 ) {
     let err = if let Some(err) = tally.clone().result.err() {
         err
@@ -134,40 +131,48 @@ async fn handle_error_tally(
         return;
     };
     if config.tallyable_error_codes.contains(&err) {
-        let PolicyResponse {
-            block_connection_ip,
-            block_proxy_ip,
-        } = policy.handle_tally(tally.clone());
-        if block_connection_ip {
-            blocklists.connection_ips.write().insert(
-                tally
-                    .connection_ip
-                    .expect("Expected connection IP if policy is blocking it"),
-                Utc::now()
-                    + chrono::Duration::seconds(
-                        config.remote_blocklist_ttl_sec.try_into().unwrap(),
-                    ),
-            );
-        }
-        if block_proxy_ip {
-            blocklists.proxy_ips.write().insert(
-                tally
-                    .proxy_ip
-                    .expect("Expected proxy IP if policy is blocking it"),
-                Utc::now()
-                    + chrono::Duration::seconds(
-                        config.remote_blocklist_ttl_sec.try_into().unwrap(),
-                    ),
-            );
-        }
+        handle_tally_impl(policy, config, tally, blocklists).await
     }
 }
 
 async fn handle_spam_tally(
-    _policy: &mut TrafficControlPolicy,
-    _config: &PolicyConfig,
-    _tally: TrafficTally,
-    _blocklists: Blocklists,
+    policy: &mut TrafficControlPolicy,
+    config: &PolicyConfig,
+    tally: TrafficTally,
+    blocklists: Arc<Blocklists>,
 ) {
-    // TODO
+    // TODO -- add update of spam blocklist
+    handle_tally_impl(policy, config, tally, blocklists).await
+}
+
+async fn handle_tally_impl(
+    policy: &mut TrafficControlPolicy,
+    config: &PolicyConfig,
+    tally: TrafficTally,
+    blocklists: Arc<Blocklists>,
+) {
+    let PolicyResponse {
+        block_connection_ip,
+        block_proxy_ip,
+    } = policy.handle_tally(tally.clone());
+    if block_connection_ip {
+        blocklists.connection_ips.write().insert(
+            tally
+                .connection_ip
+                .expect("Expected connection IP if policy is blocking it"),
+            Utc::now()
+                + chrono::Duration::seconds(
+                    config.connection_blocklist_ttl_sec.try_into().unwrap(),
+                ),
+        );
+    }
+    if block_proxy_ip {
+        blocklists.proxy_ips.write().insert(
+            tally
+                .proxy_ip
+                .expect("Expected proxy IP if policy is blocking it"),
+            Utc::now()
+                + chrono::Duration::seconds(config.proxy_blocklist_ttl_sec.try_into().unwrap()),
+        );
+    }
 }
