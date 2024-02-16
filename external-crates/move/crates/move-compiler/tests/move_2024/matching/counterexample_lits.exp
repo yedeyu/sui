@@ -1,4 +1,4 @@
-error[E04029]: non-exhaustive pattern
+error[E04033]: non-exhaustive pattern
   ┌─ tests/move_2024/matching/counterexample_lits.move:8:16
   │
 8 │         match (Tuple2::Ctor(0, 1)) {
@@ -6,7 +6,7 @@ error[E04029]: non-exhaustive pattern
   │
   = When '_0' is not 0
 
-error[E04029]: non-exhaustive pattern
+error[E04033]: non-exhaustive pattern
    ┌─ tests/move_2024/matching/counterexample_lits.move:20:16
    │
 20 │         match (tup) {
@@ -14,19 +14,19 @@ error[E04029]: non-exhaustive pattern
    │
    = When '_0' is not 1
 
-error[E04029]: non-exhaustive pattern
+error[E04033]: non-exhaustive pattern
    ┌─ tests/move_2024/matching/counterexample_lits.move:26:16
    │
 26 │         match (tup) {
    │                ^^^ Pattern 'Tuple2::Ctor(false, _)' not covered
 
-error[E04029]: non-exhaustive pattern
+error[E04033]: non-exhaustive pattern
    ┌─ tests/move_2024/matching/counterexample_lits.move:32:16
    │
 32 │         match (tup) {
    │                ^^^ Pattern 'Tuple2::Ctor(false, false)' not covered
 
-error[E04029]: non-exhaustive pattern
+error[E04033]: non-exhaustive pattern
    ┌─ tests/move_2024/matching/counterexample_lits.move:48:16
    │
 48 │         match (Tuple2::Ctor(0, 1)) {
@@ -34,7 +34,7 @@ error[E04029]: non-exhaustive pattern
    │
    = When '_0' is not 0 or 3
 
-error[E04029]: non-exhaustive pattern
+error[E04033]: non-exhaustive pattern
    ┌─ tests/move_2024/matching/counterexample_lits.move:55:16
    │
 55 │         match (Tuple2::Ctor(0, 1)) {

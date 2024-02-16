@@ -641,14 +641,6 @@ fn function_body(
                 MutForwardCFG::new(start, &mut blocks, binfo);
             context.env.add_diags(diags);
 
-            // for (n, block) in cfg.blocks() {
-            //     println!("{}:", n);
-            //     for entry in block {
-            //         print!("    ");
-            //         entry.print();
-            //     }
-            // }
-
             let function_context = super::CFGContext {
                 module,
                 member: cfgir::MemberName::Function(name.0),
