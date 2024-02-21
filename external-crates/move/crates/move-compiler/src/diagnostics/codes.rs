@@ -230,6 +230,8 @@ codes!(
         UnboundLabel: { msg: "unbound label", severity: BlockingError },
         InvalidMut: { msg: "invalid 'mut' declaration", severity: NonblockingError },
         InvalidMacroParameter: { msg: "invalid macro parameter", severity: NonblockingError },
+        InvalidPattern: { msg: "invalud pattern", severity: BlockingError },
+        UnboundVariant: { msg: "unbound variant", severity: BlockingError },
     ],
     // errors for typing rules. mostly typing/translate
     TypeSafety: [
@@ -274,6 +276,7 @@ codes!(
         CannotExpandMacro: { msg: "unable to expand macro function", severity: BlockingError },
         InvariantError: { msg: "types are not equal", severity: BlockingError },
         IncompatibleSyntaxMethods: { msg: "'syntax' method types differ", severity: BlockingError },
+        IncompletePattern: { msg: "non-exhaustive pattern", severity: BlockingError },
     ],
     // errors for ability rules. mostly typing/translate
     AbilitySafety: [
@@ -341,6 +344,10 @@ codes!(
             msg: "feature is not supported in specified edition",
             severity: BlockingError,
         },
+        FeatureInDevelopment: {
+            msg: "feature is under active development",
+            severity: BlockingError,
+        }
     ],
     Migration: [
         NeedsPublic: { msg: "move 2024 migration: public struct", severity: BlockingError },
