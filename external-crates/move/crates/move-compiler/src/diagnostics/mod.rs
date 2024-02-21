@@ -203,13 +203,12 @@ fn render_diagnostics(
 
 fn convert_loc(file_mapping: &FileMapping, loc: Loc) -> (FileId, Range<usize>) {
     let fname = loc.file_hash();
-    if let Some(id) = file_mapping.get(&fname) {
-        let range = loc.usize_range();
-        (*id, range)
-    } else {
-        let msg = format!("ICE Couldn't find filename hash {:?} in mapping", fname);
-        panic!("{}", msg);
-    }
+    let id = file_mapping.get(&fname).expect(&format!(
+        "ICE Couldn't find filename hash {:?} in mapping",
+        fname
+    ));
+    let range = loc.usize_range();
+    (*id, range)
 }
 
 fn render_diagnostic(
