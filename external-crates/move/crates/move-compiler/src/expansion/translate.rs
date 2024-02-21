@@ -3646,7 +3646,7 @@ fn match_pattern(context: &mut Context, sp!(loc, pat_): P::MatchPattern) -> E::M
                     let fields =
                         named_fields(context, loc, "pattern", "sub-pattern", stripped_fields);
                     check_ellipsis_usage(context, &ellipsis_locs);
-                    let ellipsis = ellipsis_locs.get(0).copied();
+                    let ellipsis = ellipsis_locs.first().copied();
                     sp(
                         loc,
                         EP::FieldConstructor(head_ctor_name, tys, fields, ellipsis),
@@ -3678,7 +3678,18 @@ fn match_pattern(context: &mut Context, sp!(loc, pat_): P::MatchPattern) -> E::M
                     }
                 }
                 Some(head_ctor_name @ sp!(_, EM::Variant(_, _))) => {
-                    sp(loc, EP::HeadConstructor(head_ctor_name, tys))
+                    if let Some(mloc) = mut_ {
+                        let msg = "'mut' can only be used with variable bindings in patterns";
+                        let nmsg = "This refers to a variant, not a variable binding";
+                        context.env().add_diag(diag!(
+                            Declarations::InvalidName,
+                            (mloc, msg),
+                            (head_ctor_name.loc, nmsg)
+                        ));
+                        error_pattern!()
+                    } else {
+                        sp(loc, EP::HeadConstructor(head_ctor_name, tys))
+                    }
                 }
                 _ => error_pattern!(),
             }
@@ -3876,7 +3887,7 @@ fn bind(context: &mut Context, sp!(loc, pb_): P::Bind) -> Option<E::LValue> {
                     check_ellipsis_usage(context, &ellipsis_locs);
                     let fields =
                         named_fields(context, loc, "deconstruction binding", "binding", vfields);
-                    E::FieldBindings::Named(fields, ellipsis_locs.get(0).copied())
+                    E::FieldBindings::Named(fields, ellipsis_locs.first().copied())
                 }
                 FieldBindings::Positional(positional_bindings) => {
                     let mut fields = vec![];

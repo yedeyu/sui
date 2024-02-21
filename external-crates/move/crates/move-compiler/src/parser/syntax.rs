@@ -1700,8 +1700,6 @@ fn parse_match_arm(context: &mut Context) -> Result<MatchArm, Box<Diagnostic>> {
 //   <PatField> = <Field> ( ":" <MatchPat> )?
 
 fn parse_match_pattern(context: &mut Context) -> Result<MatchPattern, Box<Diagnostic>> {
-    const INVALID_MUT_ERROR_MSG: &str =
-        "Can't use 'mut' as a modifier outside of variable bindings";
     const INVALID_PAT_ERROR_MSG: &str = "Invalid pattern";
 
     use MatchPattern_::*;
@@ -1715,51 +1713,47 @@ fn parse_match_pattern(context: &mut Context) -> Result<MatchPattern, Box<Diagno
                 pat
             }
             Tok::Mut | Tok::Identifier => ok_with_loc!(context, {
-                let mut_ = parse_mut_opt(context)?;
-                let name_access_chain = parse_name_access_chain(context, || "a pattern entry")?;
-                let ty_args = parse_optional_type_args(context)?;
+                let next_tok = context.tokens.lookahead()?;
+                if !matches!(
+                    next_tok,
+                    Tok::LBrace | Tok::Less | Tok::ColonColon | Tok::LParen
+                ) {
+                    let mut_ = parse_mut_opt(context)?;
+                    let name_access_chain = parse_name_access_chain(context, || "a pattern entry")?;
+                    Name(mut_, name_access_chain, None)
+                } else {
+                    let name_access_chain = parse_name_access_chain(context, || "a pattern entry")?;
+                    let ty_args = parse_optional_type_args(context)?;
 
-                match mut_ {
-                    Some(loc)
-                        if !matches!(name_access_chain.value, NameAccessChain_::One(_))
-                            || ty_args.is_some() =>
-                    {
-                        return Err(Box::new(diag!(
-                            Syntax::UnexpectedToken,
-                            (loc, INVALID_MUT_ERROR_MSG)
-                        )));
-                    }
-                    _ => (),
-                }
-
-                match context.tokens.peek() {
-                    Tok::LParen => {
-                        let (loc, patterns) = with_loc!(
-                            context,
-                            parse_comma_list(
+                    match context.tokens.peek() {
+                        Tok::LParen => {
+                            let (loc, patterns) = with_loc!(
                                 context,
-                                Tok::LParen,
-                                Tok::RParen,
-                                parse_positional_field_pattern,
-                                "a pattern",
-                            )?
-                        );
-                        PositionalConstructor(name_access_chain, ty_args, sp(loc, patterns))
-                    }
-                    Tok::LBrace => {
-                        let (loc, patterns) = with_loc!(
-                            context,
-                            parse_comma_list(
+                                parse_comma_list(
+                                    context,
+                                    Tok::LParen,
+                                    Tok::RParen,
+                                    parse_positional_field_pattern,
+                                    "a pattern",
+                                )?
+                            );
+                            PositionalConstructor(name_access_chain, ty_args, sp(loc, patterns))
+                        }
+                        Tok::LBrace => {
+                            let (loc, patterns) = with_loc!(
                                 context,
-                                Tok::LBrace,
-                                Tok::RBrace,
-                                parse_field_pattern,
-                                "a field pattern",
-                            )?
-                        );
-                        FieldConstructor(name_access_chain, ty_args, sp(loc, patterns))
+                                parse_comma_list(
+                                    context,
+                                    Tok::LBrace,
+                                    Tok::RBrace,
+                                    parse_field_pattern,
+                                    "a field pattern",
+                                )?
+                            );
+                            FieldConstructor(name_access_chain, ty_args, sp(loc, patterns))
+                        }
+                        _ => Name(None, name_access_chain, ty_args),
                     }
-                    _ => Name(mut_, name_access_chain, ty_args),
                 }
             }),
             _ => {
@@ -3767,7 +3761,7 @@ fn parse_module_member(context: &mut Context) -> Result<ModuleMember, ErrCase> {
                                 format_oxford_list!(
                                     "or",
                                     "'{}'",
-                                    vec![
+                                    [
                                         Tok::Spec,
                                         Tok::Use,
                                         Tok::Friend,
@@ -3787,7 +3781,7 @@ fn parse_module_member(context: &mut Context) -> Result<ModuleMember, ErrCase> {
                                 format_oxford_list!(
                                     "or",
                                     "'{}'",
-                                    vec![
+                                    [
                                         Tok::Spec,
                                         Tok::Use,
                                         Tok::Friend,

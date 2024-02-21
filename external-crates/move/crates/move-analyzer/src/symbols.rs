@@ -1829,10 +1829,20 @@ impl<'a> ParsingSymbolicator<'a> {
                 }
                 match bindings {
                     P::FieldBindings::Named(v) => {
-                        v.iter().for_each(|(_, bind)| self.bind_symbols(bind))
+                        for symbol in v {
+                            match symbol {
+                                P::Ellipsis::Binder((_, x)) => self.bind_symbols(x),
+                                P::Ellipsis::Ellipsis(_) => (),
+                            }
+                        }
                     }
                     P::FieldBindings::Positional(v) => {
-                        v.iter().for_each(|bind| self.bind_symbols(bind))
+                        for symbol in v.iter() {
+                            match symbol {
+                                P::Ellipsis::Binder(x) => self.bind_symbols(x),
+                                P::Ellipsis::Ellipsis(_) => (),
+                            }
+                        }
                     }
                 }
             }

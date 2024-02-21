@@ -2516,7 +2516,7 @@ fn match_arm(context: &mut Context, sp!(aloc, arm): E::MatchArm) -> N::MatchArm 
     let rhs_binders: BTreeSet<N::Var> = binders
         .iter()
         .filter(|(_, binder)| context.used_locals.contains(&binder.value))
-        .map(|(_, binder)| binder.clone())
+        .map(|(_, binder)| *binder)
         .collect();
 
     // Now we mark usage for the guard-used pattern variables.
@@ -2666,10 +2666,10 @@ fn unqiue_pattern_binders(
                         report_mismatched_or(context, OrPosn::Left, key, right.loc);
                     }
 
-                    let lhs_mutability = mut_and_locs.get(0).and_then(|(m, _)| *m);
+                    let lhs_mutability = mut_and_locs.first().and_then(|(m, _)| *m);
                     let rhs_mutability = right_bindings
                         .get(key)
-                        .and_then(|mut_and_locs| mut_and_locs.get(0).and_then(|(m, _)| *m));
+                        .and_then(|mut_and_locs| mut_and_locs.first().and_then(|(m, _)| *m));
                     match (lhs_mutability, rhs_mutability) {
                         // LHS variable mutable, RHS variable immutable
                         (Some(lhs_mutability), None) => {
@@ -2730,7 +2730,7 @@ fn unqiue_pattern_binders(
 
     check_duplicates(context, pattern)
         .into_iter()
-        .map(|(var, vs)| (vs.get(0).and_then(|x| x.0), var))
+        .map(|(var, vs)| (vs.first().and_then(|x| x.0), var))
         .collect::<Vec<_>>()
 }
 
