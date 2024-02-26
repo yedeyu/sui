@@ -182,6 +182,7 @@ codes!(
             { msg: "invalid identifier escape", severity: NonblockingError },
         InvalidMoveOrCopy: { msg: "invalid 'move' or 'copy'", severity: NonblockingError },
         InvalidLabel: { msg: "invalid expression label", severity: NonblockingError },
+        InvalidMatch: { msg: "invalid 'match'", severity: BlockingError },
     ],
     // errors for any rules around declaration items
     Declarations: [
@@ -210,6 +211,7 @@ codes!(
         UnknownAttribute: { msg: "unknown attribute", severity: Warning },
         InvalidSyntaxMethod: { msg: "invalid 'syntax' method type", severity: NonblockingError },
         MissingSyntaxMethod: { msg: "no valid 'syntax' declaration found", severity: BlockingError },
+        InvalidEnum: { msg: "invalid 'enum' declaration", severity: NonblockingError },
     ],
     // errors name resolution, mostly expansion/translate and naming/translate
     NameResolution: [

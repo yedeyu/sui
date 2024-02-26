@@ -2677,7 +2677,7 @@ fn enum_def_(
     let type_parameters = datatype_type_parameters(context, pty_params);
     context.push_type_parameters(type_parameters.iter().map(|tp| &tp.name));
     let abilities = ability_set(context, "modifier", abilities_vec);
-    let variants = enum_variants(context, &name, pvariants);
+    let variants = enum_variants(context, &name, loc, pvariants);
     let edef = E::EnumDefinition {
         warning_filter,
         index,
@@ -2695,9 +2695,16 @@ fn enum_def_(
 fn enum_variants(
     context: &mut Context,
     ename: &DatatypeName,
+    eloc: Loc,
     pvariants: Vec<P::VariantDefinition>,
 ) -> UniqueMap<VariantName, E::VariantDefinition> {
     let mut variants = UniqueMap::new();
+    if pvariants.is_empty() {
+        context.env().add_diag(diag!(
+            Declarations::InvalidEnum,
+            (eloc, "An 'enum' must define at least one variant")
+        ))
+    }
     for variant in pvariants {
         let loc = variant.loc;
         let (vname, vdef) = enum_variant_def(context, variants.len(), variant);
