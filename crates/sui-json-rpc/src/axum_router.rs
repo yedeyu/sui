@@ -19,10 +19,11 @@ use jsonrpsee::types::error::{ErrorCode, BATCHES_NOT_SUPPORTED_CODE, BATCHES_NOT
 use jsonrpsee::types::{ErrorObject, Id, InvalidRequest, Params, Request};
 use jsonrpsee::{core::server::rpc_module::Methods, server::logger::Logger};
 use serde_json::value::{RawValue, Value};
-use sui_core::traffic_controller::TrafficController;
+use sui_core::traffic_controller::{
+    metrics::TrafficControllerMetrics, policies::TrafficTally, TrafficController,
+};
 use sui_types::error::{SuiError, SuiResult};
 use sui_types::traffic_control::PolicyConfig;
-use sui_types::traffic_control::TrafficTally;
 
 use crate::routing_layer::RpcRouter;
 use sui_json_rpc_api::CLIENT_TARGET_API_VERSION_HEADER;
@@ -48,6 +49,7 @@ impl<L> JsonRpcService<L> {
         logger: L,
         remote_fw_config: RemoteFirewallConfig,
         policy_config: Option<PolicyConfig>,
+        traffic_controller_metrics: TrafficControllerMetrics,
     ) -> Self {
         Self {
             methods,
@@ -56,7 +58,8 @@ impl<L> JsonRpcService<L> {
             id_provider: Arc::new(RandomIntegerIdProvider),
             traffic_controller: if let Some(policy) = policy_config {
                 Some(Arc::new(
-                    TrafficController::spawn(remote_fw_config, policy).await,
+                    TrafficController::spawn(remote_fw_config, policy, traffic_controller_metrics)
+                        .await,
                 ))
             } else {
                 None

@@ -12,6 +12,7 @@ use hyper::Method;
 use hyper::Request;
 use jsonrpsee::RpcModule;
 use prometheus::Registry;
+use sui_core::traffic_controller::metrics::TrafficControllerMetrics;
 use sui_types::traffic_control::PolicyConfig;
 use sui_types::traffic_control::RemoteFirewallConfig;
 use tokio::runtime::Handle;
@@ -175,6 +176,7 @@ impl JsonRpcServerBuilder {
         let methods_names = module.method_names().collect::<Vec<_>>();
 
         let metrics_logger = MetricsLogger::new(&self.registry, &methods_names);
+        let traffic_controller_metrics = TrafficControllerMetrics::new(&self.registry);
 
         let middleware = tower::ServiceBuilder::new()
             .layer(Self::trace_layer())
@@ -186,6 +188,7 @@ impl JsonRpcServerBuilder {
             metrics_logger,
             self.firewall_config.clone(),
             self.policy_config.clone(),
+            traffic_controller_metrics,
         )
         .await;
 

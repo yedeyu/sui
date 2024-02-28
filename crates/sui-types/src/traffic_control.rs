@@ -1,16 +1,12 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::{collections::HashMap, net::IpAddr};
-
 use crate::error::SuiResult;
-use chrono::{DateTime, Utc};
 use core::hash::Hash;
 use jsonrpsee::core::server::helpers::MethodResponse;
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::fmt::Debug;
-use tracing::info;
 
 #[derive(Clone, Debug)]
 pub enum ServiceResponse {
@@ -53,14 +49,6 @@ impl ServiceResponse {
     }
 }
 
-#[derive(Clone, Debug)]
-pub struct TrafficTally {
-    pub connection_ip: Option<IpAddr>,
-    pub proxy_ip: Option<IpAddr>,
-    pub result: ServiceResponse,
-    pub timestamp: DateTime<Utc>,
-}
-
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "kebab-case")]
@@ -96,49 +84,6 @@ pub enum PolicyType {
     TestPanicOnInvocation,
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct PolicyResponse {
-    pub block_connection_ip: Option<SocketAddr>,
-    pub block_proxy_ip: Option<SocketAddr>,
-}
-
-pub trait Policy {
-    // returns, e.g. (true, false) if connection_ip should be added to blocklist
-    // and proxy_ip should not
-    fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse;
-    fn policy_config(&self) -> &PolicyConfig;
-}
-
-// Nonserializable representation, also note that inner types are
-// not object safe, so we can't use a trait object instead
-#[derive(Clone)]
-pub enum TrafficControlPolicy {
-    NoOp(NoOpPolicy),
-    TestNConnIP(TestNConnIPPolicy),
-    TestInspectIp(TestInspectIpPolicy),
-    TestPanicOnInvocation(TestPanicOnInvocationPolicy),
-}
-
-impl Policy for TrafficControlPolicy {
-    fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse {
-        match self {
-            TrafficControlPolicy::NoOp(policy) => policy.handle_tally(tally),
-            TrafficControlPolicy::TestNConnIP(policy) => policy.handle_tally(tally),
-            TrafficControlPolicy::TestInspectIp(policy) => policy.handle_tally(tally),
-            TrafficControlPolicy::TestPanicOnInvocation(policy) => policy.handle_tally(tally),
-        }
-    }
-
-    fn policy_config(&self) -> &PolicyConfig {
-        match self {
-            TrafficControlPolicy::NoOp(policy) => policy.policy_config(),
-            TrafficControlPolicy::TestNConnIP(policy) => policy.policy_config(),
-            TrafficControlPolicy::TestInspectIp(policy) => policy.policy_config(),
-            TrafficControlPolicy::TestPanicOnInvocation(policy) => policy.policy_config(),
-        }
-    }
-}
-
 #[serde_as]
 #[derive(Clone, Debug, Deserialize, Serialize, Default)]
 #[serde(rename_all = "kebab-case")]
@@ -160,128 +105,4 @@ pub fn default_connection_blocklist_ttl_sec() -> u64 {
 }
 pub fn default_channel_capacity() -> usize {
     100
-}
-
-impl PolicyConfig {
-    pub fn to_spam_policy(&self) -> TrafficControlPolicy {
-        self.to_policy(&self.spam_policy_type)
-    }
-
-    pub fn to_error_policy(&self) -> TrafficControlPolicy {
-        self.to_policy(&self.error_policy_type)
-    }
-
-    fn to_policy(&self, policy_type: &PolicyType) -> TrafficControlPolicy {
-        match policy_type {
-            PolicyType::NoOp => TrafficControlPolicy::NoOp(NoOpPolicy::new(self.clone())),
-            PolicyType::TestNConnIP(n) => {
-                TrafficControlPolicy::TestNConnIP(TestNConnIPPolicy::new(self.clone(), *n))
-            }
-            PolicyType::TestInspectIp => {
-                TrafficControlPolicy::TestInspectIp(TestInspectIpPolicy::new(self.clone()))
-            }
-            PolicyType::TestPanicOnInvocation => TrafficControlPolicy::TestPanicOnInvocation(
-                TestPanicOnInvocationPolicy::new(self.clone()),
-            ),
-        }
-    }
-}
-
-#[derive(Clone)]
-pub struct NoOpPolicy {
-    config: PolicyConfig,
-}
-
-impl NoOpPolicy {
-    pub fn new(config: PolicyConfig) -> Self {
-        Self { config }
-    }
-
-    fn handle_tally(&mut self, _tally: TrafficTally) -> PolicyResponse {
-        PolicyResponse::default()
-    }
-
-    fn policy_config(&self) -> &PolicyConfig {
-        &self.config
-    }
-}
-
-////////////// *** Test policies below this point *** //////////////
-
-#[derive(Clone)]
-pub struct TestNConnIPPolicy {
-    config: PolicyConfig,
-    frequencies: HashMap<IpAddr, u64>,
-    threshold: u64,
-}
-
-impl TestNConnIPPolicy {
-    pub fn new(config: PolicyConfig, threshold: u64) -> Self {
-        Self {
-            config,
-            frequencies: HashMap::new(),
-            threshold,
-        }
-    }
-
-    fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse {
-        // increment the count for the IP
-        let ip = tally.connection_ip.unwrap();
-        let count = self.frequencies.entry(ip).or_insert(0);
-        *count += 1;
-        PolicyResponse {
-            block_connection_ip: if *count >= self.threshold {
-                Some(ip)
-            } else {
-                None
-            },
-            block_proxy_ip: false,
-        }
-    }
-
-    fn policy_config(&self) -> &PolicyConfig {
-        &self.config
-    }
-}
-
-#[derive(Clone)]
-pub struct TestInspectIpPolicy {
-    config: PolicyConfig,
-}
-
-impl TestInspectIpPolicy {
-    pub fn new(config: PolicyConfig) -> Self {
-        Self { config }
-    }
-
-    fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse {
-        assert!(tally.proxy_ip.is_some(), "Expected proxy_ip to be present");
-        PolicyResponse {
-            block_connection_ip: None,
-            block_proxy_ip: None,
-        }
-    }
-
-    fn policy_config(&self) -> &PolicyConfig {
-        &self.config
-    }
-}
-
-#[derive(Clone)]
-pub struct TestPanicOnInvocationPolicy {
-    config: PolicyConfig,
-}
-
-impl TestPanicOnInvocationPolicy {
-    pub fn new(config: PolicyConfig) -> Self {
-        Self { config }
-    }
-
-    fn handle_tally(&mut self, _: TrafficTally) -> PolicyResponse {
-        panic!("Tally for this policy should never be invoked")
-    }
-
-    fn policy_config(&self) -> &PolicyConfig {
-        &self.config
-    }
 }

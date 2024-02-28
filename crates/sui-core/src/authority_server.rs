@@ -38,13 +38,16 @@ use tap::TapFallible;
 use tokio::task::JoinHandle;
 use tracing::{error, error_span, info, Instrument};
 
-use crate::consensus_adapter::ConnectionMonitorStatusForTests;
 use crate::{
     authority::AuthorityState,
     consensus_adapter::{ConsensusAdapter, ConsensusAdapterMetrics},
+    traffic_controller::policies::TrafficTally,
     traffic_controller::TrafficController,
 };
-use sui_types::traffic_control::TrafficTally;
+use crate::{
+    consensus_adapter::ConnectionMonitorStatusForTests,
+    traffic_controller::metrics::TrafficControllerMetrics,
+};
 
 #[cfg(test)]
 #[path = "unit_tests/server_tests.rs"]
@@ -253,17 +256,19 @@ impl ValidatorService {
     pub async fn new(
         state: Arc<AuthorityState>,
         consensus_adapter: Arc<ConsensusAdapter>,
-        metrics: Arc<ValidatorServiceMetrics>,
+        validator_metrics: Arc<ValidatorServiceMetrics>,
+        traffic_controller_metrics: TrafficControllerMetrics,
         policy_config: Option<PolicyConfig>,
         firewall_config: RemoteFirewallConfig,
     ) -> Self {
         Self {
             state,
             consensus_adapter,
-            metrics,
+            metrics: validator_metrics,
             traffic_controller: if let Some(policy) = policy_config {
                 Some(Arc::new(
-                    TrafficController::spawn(firewall_config, policy).await,
+                    TrafficController::spawn(firewall_config, policy, traffic_controller_metrics)
+                        .await,
                 ))
             } else {
                 None
