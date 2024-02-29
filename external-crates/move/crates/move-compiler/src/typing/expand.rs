@@ -410,9 +410,7 @@ fn pat(context: &mut Context, p: &mut T::MatchPattern) {
             pat(context, lhs);
             pat(context, rhs);
         }
-        P::At(_var, inner) => {
-            pat(context, inner);
-        }
+        P::At(_var, inner) => pat(context, inner),
         P::ErrorPat | P::Literal(_) | P::Binder(_) | P::Wildcard => (),
     }
 }

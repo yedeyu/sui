@@ -643,12 +643,12 @@ fn recolor_pat(ctx: &mut Recolor, sp!(_, p_): &mut N::MatchPattern) {
                 recolor_pat(ctx, p)
             }
         }
-        N::MatchPattern_::Binder(var) => recolor_var(ctx, var),
+        N::MatchPattern_::Binder(var, _) => recolor_var(ctx, var),
         N::MatchPattern_::Or(lhs, rhs) => {
             recolor_pat(ctx, lhs);
             recolor_pat(ctx, rhs);
         }
-        N::MatchPattern_::At(var, inner) => {
+        N::MatchPattern_::At(var, _unused_var, inner) => {
             recolor_var(ctx, var);
             recolor_pat(ctx, inner);
         }
@@ -1107,7 +1107,7 @@ fn pat(context: &mut Context, sp!(_, p_): &mut N::MatchPattern) {
                 pat(context, p)
             }
         }
-        N::MatchPattern_::Binder(var) => {
+        N::MatchPattern_::Binder(var, _) => {
             if context.all_params.contains_key(&var.value) {
                 assert!(
                     context.core.env.has_errors(),
@@ -1120,7 +1120,7 @@ fn pat(context: &mut Context, sp!(_, p_): &mut N::MatchPattern) {
             pat(context, lhs);
             pat(context, rhs);
         }
-        N::MatchPattern_::At(var, inner) => {
+        N::MatchPattern_::At(var, _unused_var, inner) => {
             if context.all_params.contains_key(&var.value) {
                 assert!(
                     context.core.env.has_errors(),

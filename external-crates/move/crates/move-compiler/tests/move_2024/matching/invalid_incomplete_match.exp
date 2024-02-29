@@ -1,4 +1,4 @@
-error[E04033]: non-exhaustive pattern
+error[E04035]: non-exhaustive pattern
    ┌─ tests/move_2024/matching/invalid_incomplete_match.move:13:16
    │
 13 │         match (x) {

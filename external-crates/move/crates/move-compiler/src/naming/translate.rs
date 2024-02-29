@@ -8,7 +8,7 @@ use crate::{
     editions::FeatureGate,
     expansion::{
         ast::{self as E, AbilitySet, Ellipsis, ModuleIdent, Visibility},
-        translate::is_valid_struct_or_constant_name as is_constant_name,
+        translate::is_valid_datatype_or_constant_name as is_constant_name,
     },
     ice,
     naming::{
@@ -105,7 +105,7 @@ impl ModuleType {
 }
 
 #[derive(Debug, Clone)]
-struct StructType {
+pub(super) struct StructType {
     original_mident: ModuleIdent,
     decl_loc: Loc,
     arity: usize,
@@ -113,7 +113,7 @@ struct StructType {
 }
 
 #[derive(Debug, Clone)]
-struct EnumType {
+pub(super) struct EnumType {
     original_mident: ModuleIdent,
     decl_loc: Loc,
     arity: usize,
@@ -121,14 +121,14 @@ struct EnumType {
 }
 
 #[derive(Debug, Clone)]
-struct VariantConstructor {
+pub(super) struct VariantConstructor {
     original_variant_name: Name,
     decl_loc: Loc,
     field_info: FieldInfo,
 }
 
 #[derive(Debug, Clone)]
-enum FieldInfo {
+pub(super) enum FieldInfo {
     Positional(usize),
     Named(BTreeSet<Field>),
     Empty,
@@ -2658,7 +2658,7 @@ fn unqiue_pattern_binders(
                     .collect();
                 report_duplicates_and_combine(context, bindings)
             }
-            EP::FieldConstructor(_, _, fields, _) => {
+            EP::NamedConstructor(_, _, fields, _) => {
                 let mut bindings = vec![];
                 for (_, _, (_, pat)) in fields {
                     bindings.push(check_duplicates(context, pat));
@@ -2842,7 +2842,7 @@ fn match_pattern(context: &mut Context, in_pat: Box<E::MatchPattern>) -> Box<N::
                 NP::ErrorPat
             }
         }
-        EP::FieldConstructor(name, etys_opt, args, ellipsis) => {
+        EP::NamedConstructor(name, etys_opt, args, ellipsis) => {
             if let Some((mident, enum_, variant, tys_opt, _, field_info)) =
                 context.resolve_variant_name(ploc, "pattern", name, etys_opt)
             {
@@ -2889,7 +2889,7 @@ fn match_pattern(context: &mut Context, in_pat: Box<E::MatchPattern>) -> Box<N::
         EP::Binder(_, binder) if binder.is_underscore() => NP::Wildcard,
         EP::Binder(_, binder) => {
             if let Some(binder) = context.resolve_pattern_binder(binder.loc(), binder.0) {
-                NP::Binder(binder)
+                NP::Binder(binder, false)
             } else {
                 assert!(context.env.has_errors());
                 NP::ErrorPat
@@ -2900,7 +2900,11 @@ fn match_pattern(context: &mut Context, in_pat: Box<E::MatchPattern>) -> Box<N::
         EP::Or(lhs, rhs) => NP::Or(match_pattern(context, lhs), match_pattern(context, rhs)),
         EP::At(binder, body) => {
             if let Some(binder) = context.resolve_pattern_binder(binder.loc(), binder.0) {
-                NP::At(binder, match_pattern(context, body))
+                NP::At(
+                    binder,
+                    /* unused_binding */ false,
+                    match_pattern(context, body),
+                )
             } else {
                 assert!(context.env.has_errors());
                 match_pattern(context, body).value
@@ -3395,12 +3399,6 @@ fn remove_unused_bindings_exp(
         N::Exp_::Match(esubject, arms) => {
             remove_unused_bindings_exp(context, used, esubject);
             for arm in &mut arms.value {
-                let binders = std::mem::take(&mut arm.value.binders);
-                let used_binders = binders
-                    .into_iter()
-                    .filter(|(_, v)| used.contains(&v.value))
-                    .collect();
-                arm.value.binders = used_binders;
                 remove_unused_bindings_pattern(context, used, &mut arm.value.pattern);
                 if let Some(guard) = arm.value.guard.as_mut() {
                     remove_unused_bindings_exp(context, used, guard)
@@ -3498,20 +3496,21 @@ fn remove_unused_bindings_pattern(
                 remove_unused_bindings_pattern(context, used, pat)
             }
         }
-        NP::Binder(var) => {
+        NP::Binder(var, unused_binding) => {
             if !used.contains(&var.value) {
                 report_unused_local(context, var);
-                *pat_ = NP::Wildcard;
+                *unused_binding = true;
             }
         }
         NP::Or(lhs, rhs) => {
             remove_unused_bindings_pattern(context, used, lhs);
             remove_unused_bindings_pattern(context, used, rhs);
         }
-        NP::At(var, inner) => {
+        NP::At(var, unused_binding, inner) => {
             if !used.contains(&var.value) {
                 report_unused_local(context, var);
-                remove_unused_bindings_pattern(context, used, &mut *inner);
+                *unused_binding = true;
+                remove_unused_bindings_pattern(context, used, inner);
             } else {
                 remove_unused_bindings_pattern(context, used, &mut *inner);
             }

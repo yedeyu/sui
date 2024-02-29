@@ -6,7 +6,7 @@ warning[W09003]: unused assignment
    │
    = This warning can be suppressed with '#[allow(unused_assignment)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
 
-error[E04033]: non-exhaustive pattern
+error[E04035]: non-exhaustive pattern
    ┌─ tests/move_2024/matching/multi_or_not_exhaustive.move:12:16
    │
 12 │         match (subject) {

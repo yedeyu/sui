@@ -493,11 +493,11 @@ pub enum MatchPattern_ {
         Option<Vec<Type>>,
         Fields<MatchPattern>,
     ),
-    Binder(Var),
+    Binder(Var, /* unused binding */ bool),
     Literal(Value),
     Wildcard,
     Or(Box<MatchPattern>, Box<MatchPattern>),
-    At(Var, Box<MatchPattern>),
+    At(Var, /* unused binding */ bool, Box<MatchPattern>),
     ErrorPat,
 }
 
@@ -1890,7 +1890,12 @@ impl AstDebug for MatchPattern_ {
                 });
                 w.write("} ");
             }
-            Binder(name) => name.ast_debug(w),
+            Binder(name, unused_binding) => {
+                name.ast_debug(w);
+                if *unused_binding {
+                    w.write("#unused");
+                }
+            }
             Literal(v) => v.ast_debug(w),
             Wildcard => w.write("_"),
             Or(lhs, rhs) => {
@@ -1898,9 +1903,12 @@ impl AstDebug for MatchPattern_ {
                 w.write(" | ");
                 rhs.ast_debug(w);
             }
-            At(x, pat) => {
+            At(x, unused_binding, pat) => {
                 x.ast_debug(w);
-                w.write("@");
+                if *unused_binding {
+                    w.write("#unused");
+                }
+                w.write(" @ ");
                 pat.ast_debug(w);
             }
             ErrorPat => w.write("#err"),
