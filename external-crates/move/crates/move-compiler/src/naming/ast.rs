@@ -855,7 +855,7 @@ impl Type_ {
     pub fn unfold_to_builtin_type_name(&self) -> Option<&BuiltinTypeName> {
         match self {
             Type_::Apply(_, sp!(_, TypeName_::Builtin(b)), _) => Some(b),
-            Type_::Ref(_, inner) => return inner.value.unfold_to_builtin_type_name(),
+            Type_::Ref(_, inner) => inner.value.unfold_to_builtin_type_name(),
             _ => None,
         }
     }
@@ -863,7 +863,7 @@ impl Type_ {
     pub fn unfold_to_type_name(&self) -> Option<&TypeName> {
         match self {
             Type_::Apply(_, tn, _) => Some(tn),
-            Type_::Ref(_, inner) => return inner.value.unfold_to_type_name(),
+            Type_::Ref(_, inner) => inner.value.unfold_to_type_name(),
             _ => None,
         }
     }
@@ -871,7 +871,7 @@ impl Type_ {
     pub fn type_arguments(&self) -> Option<&Vec<Type>> {
         match self {
             Type_::Apply(_, _, tyargs) => Some(tyargs),
-            Type_::Ref(_, inner) => return inner.value.type_arguments(),
+            Type_::Ref(_, inner) => inner.value.type_arguments(),
             _ => None,
         }
     }
