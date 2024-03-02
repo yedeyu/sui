@@ -266,6 +266,9 @@ impl Core {
         // 2. Consume the next transactions to be included.
         let transactions = self.transaction_consumer.next();
 
+        // 3. Consume the commit votes to be included.
+        let commit_votes = self.dag_state.write().commit_votes(100);
+
         // 3. Create the block and insert to storage.
         let block = Block::V1(BlockV1::new(
             self.context.committee.epoch(),
@@ -274,6 +277,7 @@ impl Core {
             now,
             ancestors,
             transactions,
+            commit_votes,
         ));
         let signed_block =
             SignedBlock::new(block, &self.block_signer).expect("Block signing failed.");
@@ -497,8 +501,12 @@ mod test {
 
     use super::*;
     use crate::{
-        block::TestBlock, block_verifier::NoopBlockVerifier, commit::CommitAPI as _,
-        storage::mem_store::MemStore, transaction::TransactionClient,
+        block::TestBlock,
+        block_verifier::NoopBlockVerifier,
+        commit::CommitAPI as _,
+        storage::{mem_store::MemStore, WriteBatch},
+        transaction::TransactionClient,
+        CommitIndex,
     };
 
     /// Recover Core and continue proposing from the last round which forms a quorum.
@@ -530,7 +538,7 @@ mod test {
         }
         // write them in store
         store
-            .write(all_blocks, vec![], vec![])
+            .write(WriteBatch::default().blocks(all_blocks))
             .expect("Storage error");
 
         // create dag state after all blocks have been written to store
@@ -545,7 +553,8 @@ mod test {
         let commit_observer = CommitObserver::new(
             context.clone(),
             sender.clone(),
-            0, // last_processed_index
+            0, // last_processed_commit_round
+            0, // last_processed_commit_index
             dag_state.clone(),
             store.clone(),
         );
@@ -600,7 +609,9 @@ mod test {
         // as soon as the new block for round 5 is proposed.
         assert_eq!(last_commit.index(), 2);
         assert_eq!(dag_state.read().last_commit_index(), 2);
-        let all_stored_commits = store.scan_commits(0).unwrap();
+        let all_stored_commits = store
+            .scan_commits((0, 0), (Round::MAX, CommitIndex::MAX))
+            .unwrap();
         assert_eq!(all_stored_commits.len(), 2);
     }
 
@@ -642,7 +653,7 @@ mod test {
 
         // write them in store
         store
-            .write(all_blocks, vec![], vec![])
+            .write(WriteBatch::default().blocks(all_blocks))
             .expect("Storage error");
 
         // create dag state after all blocks have been written to store
@@ -657,7 +668,8 @@ mod test {
         let commit_observer = CommitObserver::new(
             context.clone(),
             sender.clone(),
-            0, // last_processed_index
+            0, // last_processed_commit_round
+            0, // last_processed_commit_index
             dag_state.clone(),
             store.clone(),
         );
@@ -715,7 +727,9 @@ mod test {
         // as the new block for round 4 is proposed.
         assert_eq!(last_commit.index(), 2);
         assert_eq!(dag_state.read().last_commit_index(), 2);
-        let all_stored_commits = store.scan_commits(0).unwrap();
+        let all_stored_commits = store
+            .scan_commits((0, 0), (Round::MAX, CommitIndex::MAX))
+            .unwrap();
         assert_eq!(all_stored_commits.len(), 2);
     }
 
@@ -748,7 +762,8 @@ mod test {
         let commit_observer = CommitObserver::new(
             context.clone(),
             sender.clone(),
-            0, // last_processed_index
+            0, // last_processed_commit_round
+            0, // last_processed_commit_index
             dag_state.clone(),
             store.clone(),
         );
@@ -780,7 +795,7 @@ mod test {
             }
         }
 
-        // trigger the try_new_block - that should return now a new block
+        // a new block should have been created during recovery.
         let block = block_receiver
             .recv()
             .await
@@ -848,7 +863,8 @@ mod test {
         let commit_observer = CommitObserver::new(
             context.clone(),
             sender.clone(),
-            0, // last_processed_index
+            0, // last_processed_commit_round
+            0, // last_processed_commit_index
             dag_state.clone(),
             store.clone(),
         );
@@ -925,7 +941,7 @@ mod test {
             last_round_blocks = this_round_blocks;
         }
 
-        // Try to create the blocks for round 4 by calling the try_new_block method. No block should be created as the
+        // Try to create the blocks for round 4 by calling the try_propose() method. No block should be created as the
         // leader - authority 3 - hasn't proposed any block.
         for (core, _, _, _) in cores.iter_mut() {
             core.add_blocks(last_round_blocks.clone()).unwrap();
@@ -946,7 +962,10 @@ mod test {
             // There are 1 leader rounds with rounds completed up to and including
             // round 4
             assert_eq!(last_commit.index(), 1);
-            let all_stored_commits = core.store.scan_commits(0).unwrap();
+            let all_stored_commits = core
+                .store
+                .scan_commits((0, 0), (Round::MAX, CommitIndex::MAX))
+                .unwrap();
             assert_eq!(all_stored_commits.len(), 1);
         }
     }
@@ -1017,7 +1036,10 @@ mod test {
             // round 9. Round 10 blocks will only include their own blocks, so the
             // 8th leader will not be committed.
             assert_eq!(last_commit.index(), 7);
-            let all_stored_commits = core.store.scan_commits(0).unwrap();
+            let all_stored_commits = core
+                .store
+                .scan_commits((0, 0), (Round::MAX, CommitIndex::MAX))
+                .unwrap();
             assert_eq!(all_stored_commits.len(), 7);
         }
     }
@@ -1086,7 +1108,10 @@ mod test {
         // round 10. However because there were no blocks produced for authority 3
         // 2 leader rounds will be skipped.
         assert_eq!(last_commit.index(), 6);
-        let all_stored_commits = core.store.scan_commits(0).unwrap();
+        let all_stored_commits = core
+            .store
+            .scan_commits((0, 0), (Round::MAX, CommitIndex::MAX))
+            .unwrap();
         assert_eq!(all_stored_commits.len(), 6);
     }
 
@@ -1129,7 +1154,8 @@ mod test {
             let commit_observer = CommitObserver::new(
                 context.clone(),
                 commit_sender.clone(),
-                0, // last_processed_index
+                0, // last_processed_commit_round
+                0, // last_processed_commit_index
                 dag_state.clone(),
                 store.clone(),
             );
