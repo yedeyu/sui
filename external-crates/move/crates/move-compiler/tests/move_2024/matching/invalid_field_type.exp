@@ -1,0 +1,24 @@
+error[E04007]: incompatible types
+   ┌─ tests/move_2024/matching/invalid_field_type.move:13:18
+   │
+ 4 │         A(u64)
+   │           --- Expected: 'u64'
+   ·
+13 │             A::A(false) => default,
+   │                  ^^^^^
+   │                  │
+   │                  Invalid pattern field type. Expected '&u64'
+   │                  Given: 'bool'
+
+error[E04007]: incompatible types
+   ┌─ tests/move_2024/matching/invalid_field_type.move:20:13
+   │
+18 │     fun t1(a: &B<u64>) {
+   │                  --- Expected: 'u64'
+19 │         match (a) {
+20 │             B::B(false, _) => (),
+   │             ^^^^^^^^^^^^^^
+   │             │    │
+   │             │    Given: 'bool'
+   │             Invalid pattern type. Pattern has type '&0x42::m::B<bool>' but subject has type '&0x42::m::B<u64>'
+

@@ -1163,10 +1163,16 @@ fn subtype_no_report(
     let subst = std::mem::replace(&mut context.subst, Subst::empty());
     let lhs = core::ready_tvars(&subst, pre_lhs);
     let rhs = core::ready_tvars(&subst, pre_rhs);
-    core::subtype(subst, &lhs, &rhs).map(|(next_subst, ty)| {
-        context.subst = next_subst;
-        ty
-    })
+    match core::subtype(subst.clone(), &lhs, &rhs) {
+        Ok((next_subst, ty))  => {
+            context.subst = next_subst;
+            Ok(ty)
+        }
+        Err(err) => {
+            context.subst = subst;
+            Err(err)
+        }
+    }
 }
 
 fn subtype_impl<T: ToString, F: FnOnce() -> T>(
@@ -1540,8 +1546,12 @@ fn exp(context: &mut Context, ne: Box<N::Exp>) -> Box<T::Exp> {
                 }
             };
             let result_type = core::make_tvar(context, aloc);
-            let earms = match_arms(context, &subject_type, &result_type, narms_, &ref_mut);
-            (result_type, TE::Match(esubject, sp(aloc, earms)))
+            if let Some(earms) = match_arms(context, &subject_type, &result_type, narms_, &ref_mut) {
+                (result_type, TE::Match(esubject, sp(aloc, earms)))
+            } else {
+                assert!(context.env.has_errors());
+                (result_type, TE::UnresolvedError)
+            }
         }
         NE::While(name, nb, nloop) => {
             let eb = exp(context, nb);
@@ -1949,17 +1959,51 @@ fn match_arms(
     result_type: &Type,
     narms: Vec<N::MatchArm>,
     ref_mut: &Option<bool>,
-) -> Vec<T::MatchArm> {
-    narms
+) -> Option<Vec<T::MatchArm>> {
+    let arms_tys = narms
         .into_iter()
-        .map(|narm| match_arm(context, subject_type, result_type, narm, ref_mut))
-        .collect()
+        .map(|narm| match_arm(context, subject_type, narm, ref_mut))
+        .collect::<Vec<_>>();
+    let mut valid_arms = vec![];
+    let mut invalid_arm = None;
+    for arm in arms_tys {
+        if subtype_no_report(
+            context,
+            arm.value.rhs.ty.clone(),
+            result_type.clone(),
+        ).is_ok() {
+            valid_arms.push(arm)
+        } else {
+            invalid_arm = Some(arm);
+            break;
+        }
+    }
+    if let Some(sp!(_, invalid_arm)) = invalid_arm {
+        println!("{:#?}", context.subst);
+        println!("result: {:#?}", result_type);
+        println!("arm: {:#?}", invalid_arm.rhs.ty);
+        let invalid_msg = format!("expected {}, found {}",
+                                  core::error_format(&result_type, &context.subst),
+                                  core::error_format(&invalid_arm.rhs.ty, &context.subst),
+                                  );
+        let mut diag = diag!(TypeSafety::SubtypeError, (invalid_arm.rhs.exp.loc, invalid_msg));
+        for sp!(_, valid_arm) in valid_arms {
+            let valid_msg = format!("this arm has type {}",
+                                  core::error_format(&valid_arm.rhs.ty, &context.subst),
+                                  );
+            diag.add_secondary_label((valid_arm.rhs.exp.loc, valid_msg));
+        }
+        diag.add_note("Match arms have incompatible types");
+        context.env.add_diag(diag);
+        None
+    } else {
+        Some(valid_arms)
+    }
 }
 
 fn match_arm(
     context: &mut Context,
     subject_type: &Type,
-    result_type: &Type,
     sp!(aloc, arm_): N::MatchArm,
     ref_mut: &Option<bool>,
 ) -> T::MatchArm {
@@ -1988,10 +2032,14 @@ fn match_arm(
     let ploc = pattern.loc;
     let pattern = match_pattern(context, pattern, ref_mut, &rhs_binders);
 
+    let pat_ty_str = core::error_format(&pattern.ty, &context.subst);
+    let subject_type_str = core::error_format(&subject_type, &context.subst);
     subtype(
         context,
         ploc,
-        || "Invalid pattern",
+        || format!("Invalid pattern type. Pattern has type {} but subject has type {}",
+                   pat_ty_str,
+                   subject_type_str),
         pattern.ty.clone(),
         subject_type.clone(),
     );
@@ -2024,14 +2072,6 @@ fn match_arm(
     }
 
     let rhs = exp(context, rhs);
-    subtype(
-        context,
-        rhs.exp.loc,
-        || "Invalid right-hand side expression",
-        rhs.ty.clone(),
-        result_type.clone(),
-    );
-
     sp(
         aloc,
         T::MatchArm_ {
@@ -2096,10 +2136,11 @@ fn match_pattern_(
             let tfields = typed_fields.map(|f, (idx, (fty, tpat))| {
                 let tpat = match_pattern_(context, tpat, mut_ref, rhs_binders, wildcard_needs_drop);
                 let fty_ref = rtype!(fty);
+                let fty_str = core::error_format(&fty_ref, &context.subst);
                 let fty_out = subtype(
                     context,
                     f.loc(),
-                    || "Invalid pattern field type",
+                    || format!("Invalid pattern field type. Expected {}", fty_str),
                     tpat.ty.clone(),
                     fty_ref,
                 );

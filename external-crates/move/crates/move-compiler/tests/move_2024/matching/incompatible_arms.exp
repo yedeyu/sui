@@ -1,0 +1,29 @@
+error[E04006]: invalid subtype
+   ┌─ tests/move_2024/matching/incompatible_arms.move:14:25
+   │
+13 │             A::A(_) => default,
+   │                        ------- this arm has type '&u64'
+14 │             A::A(_n) => (),
+   │                         ^^ expected '&u64', found '()'
+   │
+   = Match arms have incompatible types
+
+error[E04006]: invalid subtype
+   ┌─ tests/move_2024/matching/incompatible_arms.move:21:27
+   │
+20 │             B::B(m, _) => m,
+   │                           - this arm has type '&T'
+21 │             B::B(_, m) => m
+   │                           ^ expected '&T', found '&U'
+   │
+   = Match arms have incompatible types
+
+error[E01002]: unexpected token
+   ┌─ tests/move_2024/matching/incompatible_arms.move:27:27
+   │
+27 │             B::B(m, _) if m == &6 => m,
+   │                           ^
+   │                           │
+   │                           Unexpected 'm'
+   │                           Expected '('
+
