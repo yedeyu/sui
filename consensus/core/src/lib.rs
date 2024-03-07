@@ -9,6 +9,7 @@ mod block_verifier;
 mod broadcaster;
 mod commit;
 mod commit_observer;
+mod commit_syncer;
 mod context;
 mod core;
 mod core_thread;
