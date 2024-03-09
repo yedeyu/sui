@@ -1,0 +1,28 @@
+error[E04007]: incompatible types
+   ┌─ tests/move_2024/typing/invalid_variant_argument.move:12:14
+   │
+ 4 │         A(u64)
+   │           --- Expected: 'u64'
+   ·
+12 │         E::A(true)
+   │              ^^^^
+   │              │
+   │              Invalid argument for field '0' for '0x42::m::E::A'
+   │              Given: 'bool'
+
+error[E03004]: unbound type
+   ┌─ tests/move_2024/typing/invalid_variant_argument.move:15:15
+   │
+15 │     fun t1(): EA<u64> {
+   │               ^^ Unbound type 'EA' in current scope
+
+error[E04007]: incompatible types
+   ┌─ tests/move_2024/typing/invalid_variant_argument.move:16:17
+   │
+16 │         ET::A(0,true)
+   │         --------^^^^-
+   │         │       │
+   │         │       Invalid argument for field '1' for '0x42::m::ET::A'
+   │         │       Given: 'bool'
+   │         Expected: integer
+

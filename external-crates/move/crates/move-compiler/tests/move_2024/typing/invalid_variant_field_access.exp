@@ -1,0 +1,6 @@
+error[E04009]: expected specific type
+  ┌─ tests/move_2024/typing/invalid_variant_field_access.move:9:9
+  │
+9 │         m.x
+  │         ^^^ Invalid access of field 'x' on '0x42::m::M'. Fields can only be accessed on structs, not enums
+

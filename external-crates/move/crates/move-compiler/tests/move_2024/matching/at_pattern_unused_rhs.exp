@@ -1,0 +1,54 @@
+error[E06001]: unused value without 'drop'
+   ┌─ tests/move_2024/matching/at_pattern_unused_rhs.move:9:19
+   │  
+ 8 │       fun t<T>(m: Maybe<T>) {
+   │             -           - The type 'T' does not have the ability 'drop'
+   │             │            
+   │             To satisfy the constraint, the 'drop' ability would need to be added here
+ 9 │           match (m) {
+   │ ╭───────────────────^
+10 │ │             x @ Maybe::Just(_) if (valid(x)) => (),
+11 │ │             Maybe::Just(_) => (),
+   │ │             -------------- The match value is created but not used. The value does not have the 'drop' ability and must be consumed before the function returns
+12 │ │             Maybe::Nothing => ()
+13 │ │         }
+   │ ╰─────────^ Invalid return
+
+error[E06001]: unused value without 'drop'
+   ┌─ tests/move_2024/matching/at_pattern_unused_rhs.move:9:19
+   │  
+ 8 │       fun t<T>(m: Maybe<T>) {
+   │             -           - The type 'T' does not have the ability 'drop'
+   │             │            
+   │             To satisfy the constraint, the 'drop' ability would need to be added here
+ 9 │           match (m) {
+   │ ╭───────────────────^
+10 │ │             x @ Maybe::Just(_) if (valid(x)) => (),
+   │ │                 -------------- The match value is created but not used. The value does not have the 'drop' ability and must be consumed before the function returns
+11 │ │             Maybe::Just(_) => (),
+12 │ │             Maybe::Nothing => ()
+13 │ │         }
+   │ ╰─────────^ Invalid return
+
+error[E05001]: ability constraint not satisfied
+   ┌─ tests/move_2024/matching/at_pattern_unused_rhs.move:10:29
+   │
+ 8 │     fun t<T>(m: Maybe<T>) {
+   │           -           - The type 'T' does not have the ability 'drop'
+   │           │            
+   │           To satisfy the constraint, the 'drop' ability would need to be added here
+ 9 │         match (m) {
+10 │             x @ Maybe::Just(_) if (valid(x)) => (),
+   │                             ^ Cannot ignore values without the 'drop' ability. '_' patterns discard their values
+
+error[E05001]: ability constraint not satisfied
+   ┌─ tests/move_2024/matching/at_pattern_unused_rhs.move:11:25
+   │
+ 8 │     fun t<T>(m: Maybe<T>) {
+   │           -           - The type 'T' does not have the ability 'drop'
+   │           │            
+   │           To satisfy the constraint, the 'drop' ability would need to be added here
+   ·
+11 │             Maybe::Just(_) => (),
+   │                         ^ Cannot ignore values without the 'drop' ability. '_' patterns discard their values
+

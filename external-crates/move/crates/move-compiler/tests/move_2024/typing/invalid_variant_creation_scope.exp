@@ -1,0 +1,7 @@
+error[E04001]: restricted visibility
+   ┌─ tests/move_2024/typing/invalid_variant_creation_scope.move:12:9
+   │
+12 │         0x42::m::F::A(10)
+   │         ^^^^^^^^^^^^^^^^^ Invalid instantiation of '0x42::m::F::A'.
+All enum variants can only be constructed in the module in which they are declared
+

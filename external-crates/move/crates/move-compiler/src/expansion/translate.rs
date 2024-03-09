@@ -1708,7 +1708,7 @@ impl Move2024PathExpander {
                             sp(ident_loc, ModuleIdent_::new(address, ModuleName(next_name)));
                         ModuleAccess(loc, EN::ModuleAccess(mident, last_name))
                     }
-                    ModuleIdent(_, mident) => ModuleAccess(
+                    ModuleIdent(_, mident) => Variant(
                         loc,
                         EN::Variant(sp(ident_loc, (mident, next_name)), last_name),
                     ),
@@ -3576,13 +3576,13 @@ fn match_pattern(context: &mut Context, sp!(loc, pat_): P::MatchPattern) -> E::M
                 ));
                 None
             }
-            EM::ModuleAccess(_mident, name) => {
+            EM::ModuleAccess(mident, name) => {
                 context.env().add_diag(diag!(
                     Syntax::UnexpectedToken,
                     (
                         name.loc,
-                        "Unexpected module member access. \
-                        Expected an identifier or enum variant."
+                        format!("Unexpected module member access {}::{}. \
+                        Expected an identifier or enum variant.", mident, name)
                     )
                 ));
                 None
