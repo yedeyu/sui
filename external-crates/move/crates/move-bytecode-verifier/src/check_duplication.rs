@@ -15,7 +15,7 @@ use move_binary_format::{
     file_format::{
         CompiledModule, CompiledScript, Constant, DatatypeHandle, DatatypeHandleIndex,
         FunctionHandle, FunctionHandleIndex, FunctionInstantiation, ModuleHandle, Signature,
-        StructFieldInformation, TableIndex,
+        StructFieldInformation, TableIndex, VariantHandle,
     },
     IndexKind,
 };
@@ -43,6 +43,7 @@ impl<'a> DuplicationChecker<'a> {
         Self::check_datatype_handles(module.datatype_handles())?;
         Self::check_function_handles(module.function_handles())?;
         Self::check_function_instantiations(module.function_instantiations())?;
+        Self::check_variant_handles(module.variant_handles())?;
 
         let checker = Self { module };
         checker.check_field_handles()?;
@@ -131,6 +132,18 @@ impl<'a> DuplicationChecker<'a> {
             Some(idx) => Err(verification_error(
                 StatusCode::DUPLICATE_ELEMENT,
                 IndexKind::DatatypeHandle,
+                idx,
+            )),
+            None => Ok(()),
+        }
+    }
+
+    fn check_variant_handles(variant_handles: &[VariantHandle]) -> PartialVMResult<()> {
+        match Self::first_duplicate_element(variant_handles.iter().map(|x| (x.enum_def, x.variant)))
+        {
+            Some(idx) => Err(verification_error(
+                StatusCode::DUPLICATE_ELEMENT,
+                IndexKind::VariantHandle,
                 idx,
             )),
             None => Ok(()),
