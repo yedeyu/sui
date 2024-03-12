@@ -26,8 +26,8 @@ B2:
 	9: MoveLoc[2](loc0: EnumWithTwoVariants<Ty0>)
 	10: UnpackVariantGeneric(VariantInstantiationHandleIndex(0))
 	11: StLoc[3](loc1: Ty0)
-	12: MoveLoc[3](loc1: Ty0)
-	13: Ret
+	12: LdU64(0)
+	13: Abort
 Jump tables:
 [0]:	variant_switch EnumWithTwoVariants {
 		Variant0 => jump 9

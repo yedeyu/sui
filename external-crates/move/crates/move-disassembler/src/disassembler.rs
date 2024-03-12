@@ -1035,7 +1035,7 @@ impl<'a> Disassembler<'a> {
             .collect();
 
         if self.options.print_basic_blocks {
-            let cfg = VMControlFlowGraph::new(&code.code);
+            let cfg = VMControlFlowGraph::new(&code.code, &code.jump_tables);
             for (block_number, block_id) in cfg.blocks().iter().enumerate() {
                 instrs.insert(
                     *block_id as usize + block_number,

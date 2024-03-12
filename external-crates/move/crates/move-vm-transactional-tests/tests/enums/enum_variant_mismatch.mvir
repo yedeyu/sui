@@ -19,7 +19,7 @@ module 0x1.MonomorphicEnums {
             return move(e);
         label b2:
             EnumWithTwoVariants.Two<T> { x: y } = move(x);
-            return move(y);
+            abort 0;
     }
 }
 
@@ -44,7 +44,7 @@ module 0x1.MonomorphicEnums {
             return move(e);
         label b2:
             EnumWithTwoVariants.Two<T> { x: y } = move(x);
-            return move(y);
+            abort 0;
     }
 }
 

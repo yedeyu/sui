@@ -16,10 +16,10 @@ module 0x1.MonomorphicEnums {
             };
         label b1:
             EnumWithTwoVariants.Two { x: y } = move(x);
-            return 0;
+            return move(y);
         label b2:
             EnumWithTwoVariants.One { } = move(x);
-            return move(y);
+            return 0;
     }
 }
 

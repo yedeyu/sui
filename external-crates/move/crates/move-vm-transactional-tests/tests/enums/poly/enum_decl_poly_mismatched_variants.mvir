@@ -16,21 +16,21 @@ module 0x1.PolymorphicEnums {
             };
         label b1:
             EnumWithTwoVariants.Two<u64> { x: y } = move(x);
-            return 0;
+            return move(y);
         label b2:
             EnumWithTwoVariants.One<u64> { } = move(x);
-            return move(y);
+            return 0;
     }
 }
 
 //# run
 module 0x2.m {
-import 0x1.PolymorphicEnums;
-entry foo() {
-    let x: u64;
-    label b0:
-        x = PolymorphicEnums.f();
-        assert(move(x) == 42, 100);
-        return;
-}
+    import 0x1.PolymorphicEnums;
+    entry foo() {
+        let x: u64;
+        label b0:
+            x = PolymorphicEnums.f();
+            assert(move(x) == 42, 100);
+            return;
+    }
 }
