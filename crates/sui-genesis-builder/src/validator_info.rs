@@ -143,12 +143,12 @@ impl GenesisValidatorInfo {
         if let Err(e) = self.info.p2p_address.to_anemo_address() {
             bail!("p2p address must be valid anemo address: {e}");
         }
-        if let Err(e) = self.info.narwhal_primary_address.to_anemo_address() {
-            bail!("primary address must be valid anemo address: {e}");
-        }
-        if let Err(e) = self.info.narwhal_worker_address.to_anemo_address() {
-            bail!("worker address must be valid anemo address: {e}");
-        }
+        // if let Err(e) = self.info.narwhal_primary_address.to_anemo_address() {
+        //     bail!("primary address must be valid anemo address: {e}");
+        // }
+        // if let Err(e) = self.info.narwhal_worker_address.to_anemo_address() {
+        //     bail!("worker address must be valid anemo address: {e}");
+        // }
 
         if self.info.commission_rate > 10000 {
             bail!("commissions rate must be lower than 100%");
