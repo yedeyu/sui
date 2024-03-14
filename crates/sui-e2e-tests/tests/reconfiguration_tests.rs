@@ -552,8 +552,10 @@ async fn test_reconfig_with_committee_change_basic() {
         .await;
 
     execute_add_validator_transactions(&test_cluster, &new_validator).await;
+    println!("execute_add_validator_transactions done");
 
     test_cluster.trigger_reconfiguration().await;
+    println!("trigger_reconfiguration done");
 
     // Check that a new validator has joined the committee.
     test_cluster.fullnode_handle.sui_node.with(|node| {
@@ -567,6 +569,7 @@ async fn test_reconfig_with_committee_change_basic() {
     });
     let new_validator_handle = test_cluster.spawn_new_validator(new_validator).await;
     test_cluster.wait_for_epoch_all_nodes(1).await;
+    println!("wait_for_epoch_all_nodes 1 done");
 
     new_validator_handle.with(|node| {
         assert!(node
@@ -574,8 +577,13 @@ async fn test_reconfig_with_committee_change_basic() {
             .is_validator(&node.state().epoch_store_for_testing()));
     });
 
+    println!("execute_remove_validator_tx start");
     execute_remove_validator_tx(&test_cluster, &new_validator_handle).await;
+    println!("execute_remove_validator_tx done");
+
     test_cluster.trigger_reconfiguration().await;
+    println!("trigger_reconfiguration again done");
+
     test_cluster.fullnode_handle.sui_node.with(|node| {
         assert_eq!(
             node.state()
