@@ -188,7 +188,6 @@ impl<'a> LimitsVerifier<'a> {
                 //    the number of fields allowed in a struct.
                 // 2. Total number of variants in the enum is less than the number of variants allowed in an enum.
                 if let Some(defs) = self.resolver.enum_defs() {
-                    let mut num_fields = 0;
                     for def in defs {
                         if config
                             .max_variants_in_enum
@@ -196,6 +195,7 @@ impl<'a> LimitsVerifier<'a> {
                         {
                             return Err(PartialVMError::new(StatusCode::MAX_VARIANTS_REACHED));
                         }
+                        let mut num_fields = 0;
                         for variant in &def.variants {
                             num_fields += variant.fields.len();
                             if num_fields > max_fields_in_struct {
