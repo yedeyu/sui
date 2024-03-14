@@ -4,8 +4,9 @@
 use eyre::{eyre, Result};
 use std::{
     borrow::Cow,
-    net::{IpAddr, Ipv4Addr, SocketAddr},
+    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
 };
+use tracing::error;
 
 pub use ::multiaddr::Error;
 pub use ::multiaddr::Protocol;
@@ -102,14 +103,28 @@ impl Multiaddr {
 
     /// Set the ip address to `0.0.0.0`. For instance, it converts the following address
     /// `/ip4/155.138.174.208/tcp/1500/http` into `/ip4/0.0.0.0/tcp/1500/http`.
-    pub fn zero_ip_multi_address(&self) -> Self {
-        let mut new_address = ::multiaddr::Multiaddr::empty();
-        for component in &self.0 {
-            match component {
-                multiaddr::Protocol::Ip4(_) => {
-                    new_address.push(multiaddr::Protocol::Ip4(Ipv4Addr::UNSPECIFIED))
-                }
-                c => new_address.push(c),
+    /// This is useful when starting a server and you want to listen on all interfaces.
+    pub fn with_zero_ip(&self) -> Self {
+        let mut new_address = self.0.clone();
+        let Some(protocol) = new_address.iter().next() else {
+            error!("Multiaddr is empty");
+            return Self(new_address);
+        };
+        match protocol {
+            multiaddr::Protocol::Ip4(_)
+            | multiaddr::Protocol::Dns(_)
+            | multiaddr::Protocol::Dns4(_) => {
+                new_address = new_address
+                    .replace(0, |_| Some(multiaddr::Protocol::Ip4(Ipv4Addr::UNSPECIFIED)))
+                    .unwrap();
+            }
+            multiaddr::Protocol::Ip6(_) | multiaddr::Protocol::Dns6(_) => {
+                new_address = new_address
+                    .replace(0, |_| Some(multiaddr::Protocol::Ip6(Ipv6Addr::UNSPECIFIED)))
+                    .unwrap();
+            }
+            p => {
+                error!("Unsupported protocol {} in Multiaddr {}!", p, new_address);
             }
         }
         Self(new_address)
@@ -117,14 +132,27 @@ impl Multiaddr {
 
     /// Set the ip address to `127.0.0.1`. For instance, it converts the following address
     /// `/ip4/155.138.174.208/tcp/1500/http` into `/ip4/127.0.0.1/tcp/1500/http`.
-    pub fn localhost_ip_multi_address(&self) -> Self {
-        let mut new_address = ::multiaddr::Multiaddr::empty();
-        for component in &self.0 {
-            match component {
-                multiaddr::Protocol::Ip4(_) => {
-                    new_address.push(multiaddr::Protocol::Ip4(Ipv4Addr::LOCALHOST))
-                }
-                c => new_address.push(c),
+    pub fn with_localhost_ip(&self) -> Self {
+        let mut new_address = self.0.clone();
+        let Some(protocol) = new_address.iter().next() else {
+            error!("Multiaddr is empty");
+            return Self(new_address);
+        };
+        match protocol {
+            multiaddr::Protocol::Ip4(_)
+            | multiaddr::Protocol::Dns(_)
+            | multiaddr::Protocol::Dns4(_) => {
+                new_address = new_address
+                    .replace(0, |_| Some(multiaddr::Protocol::Ip4(Ipv4Addr::LOCALHOST)))
+                    .unwrap();
+            }
+            multiaddr::Protocol::Ip6(_) | multiaddr::Protocol::Dns6(_) => {
+                new_address = new_address
+                    .replace(0, |_| Some(multiaddr::Protocol::Ip6(Ipv6Addr::LOCALHOST)))
+                    .unwrap();
+            }
+            p => {
+                error!("Unsupported protocol {} in Multiaddr {}!", p, new_address);
             }
         }
         Self(new_address)

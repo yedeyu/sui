@@ -265,9 +265,9 @@ impl<S: NetworkService> NetworkManager<S> for AnemoManager {
         // in simtest and production.
         cfg_if!(
             if #[cfg(test)] {
-                let address = authority.address.localhost_ip_multi_address();
+                let address = authority.address.with_localhost_ip();
             } else {
-                let address = authority.address.zero_ip_multi_address();
+                let address = authority.address.with_zero_ip();
             }
         );
         let all_peer_ids = self
@@ -349,7 +349,13 @@ impl<S: NetworkService> NetworkManager<S> for AnemoManager {
 
         for (_i, authority) in self.context.committee.authorities() {
             let peer_id = PeerId(authority.network_key.0.to_bytes());
-            let address = authority.address.to_anemo_address().unwrap();
+            let address = match address.to_anemo_address() {
+                Ok(addr) => addr,
+                Err(e) => {
+                    warn!("Failed to convert {:?} to anemo address: {:?}", address, e);
+                    continue;
+                }
+            };
             let peer_info = PeerInfo {
                 peer_id,
                 affinity: anemo::types::PeerAffinity::High,
