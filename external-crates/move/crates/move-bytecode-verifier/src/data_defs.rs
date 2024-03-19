@@ -31,7 +31,7 @@ impl<'a> RecursiveDataDefChecker<'a> {
 
     fn verify_module_impl(module: &'a CompiledModule) -> PartialVMResult<()> {
         let checker = Self { module };
-        let graph = DataDefGraphBuilder::new(checker.module).build()?;
+        let graph = DataDefGraphBuilder::new(checker.module)?.build()?;
 
         // toposort is iterative while petgraph::algo::is_cyclic_directed is recursive. Prefer
         // the iterative solution here as this code may be dealing with untrusted data.
@@ -68,24 +68,41 @@ struct DataDefGraphBuilder<'a> {
 }
 
 impl<'a> DataDefGraphBuilder<'a> {
-    fn new(module: &'a CompiledModule) -> Self {
+    fn new(module: &'a CompiledModule) -> PartialVMResult<Self> {
         let mut handle_to_def = BTreeMap::new();
         // the mapping from data definitions to data handles is already checked to be 1-1 by
         // DuplicationChecker
         for (idx, struct_def) in module.struct_defs().iter().enumerate() {
             let sh_idx = struct_def.struct_handle;
-            handle_to_def.insert(sh_idx, DataIndex::Struct(idx as TableIndex));
+            if let Some(other) = handle_to_def.insert(sh_idx, DataIndex::Struct(idx as TableIndex))
+            {
+                return Err(
+                    PartialVMError::new(StatusCode::UNKNOWN_INVARIANT_VIOLATION_ERROR)
+                        .with_message(format!(
+                            "Duplicate struct handle index {} for struct definitions {:?} and {}",
+                            sh_idx, other, idx
+                        )),
+                );
+            }
         }
 
         for (idx, enum_def) in module.enum_defs().iter().enumerate() {
             let sh_idx = enum_def.enum_handle;
-            handle_to_def.insert(sh_idx, DataIndex::Enum(idx as TableIndex));
+            if let Some(other) = handle_to_def.insert(sh_idx, DataIndex::Enum(idx as TableIndex)) {
+                return Err(
+                    PartialVMError::new(StatusCode::UNKNOWN_INVARIANT_VIOLATION_ERROR)
+                        .with_message(format!(
+                            "Duplicate enum handle index {} for enum definitions {:?} and {}",
+                            sh_idx, other, idx
+                        )),
+                );
+            }
         }
 
-        Self {
+        Ok(Self {
             module,
             handle_to_def,
-        }
+        })
     }
 
     fn build(self) -> PartialVMResult<DiGraphMap<DataIndex, ()>> {
