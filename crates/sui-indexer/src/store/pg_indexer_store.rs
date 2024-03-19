@@ -3,7 +3,6 @@
 
 use core::result::Result::Ok;
 use itertools::Itertools;
-use std::any::Any;
 use std::collections::hash_map::Entry;
 use std::collections::BTreeMap;
 use std::collections::HashMap;
@@ -11,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use tap::Tap;
+use std::any::{Any, TypeId};
 
 use async_trait::async_trait;
 use diesel::dsl::max;
@@ -18,6 +18,7 @@ use diesel::upsert::excluded;
 use diesel::ExpressionMethods;
 use diesel::OptionalExtension;
 use diesel::{QueryDsl, RunQueryDsl};
+use diesel::r2d2::R2D2Connection;
 use move_bytecode_utils::module_cache::SyncModuleCache;
 use tracing::info;
 
@@ -29,7 +30,7 @@ use crate::handlers::EpochToCommit;
 use crate::handlers::TransactionObjectChangesToCommit;
 use crate::metrics::IndexerMetrics;
 
-use crate::db::PgConnectionPool;
+use crate::db::{ConnectionPool};
 use crate::models::checkpoints::StoredCheckpoint;
 use crate::models::display::StoredDisplay;
 use crate::models::epoch::StoredEpochInfo;
@@ -43,7 +44,7 @@ use crate::schema::{
     checkpoints, display, epochs, events, objects, objects_history, objects_snapshot, packages,
     transactions, tx_calls, tx_changed_objects, tx_input_objects, tx_recipients, tx_senders,
 };
-use crate::store::diesel_macro::{read_only_blocking, transactional_blocking_with_retry};
+use crate::store::diesel_macro::*;
 use crate::store::module_resolver::IndexerStorePackageModuleResolver;
 use crate::types::{IndexedCheckpoint, IndexedEvent, IndexedPackage, IndexedTransaction, TxIndex};
 
@@ -104,19 +105,31 @@ SET object_version = EXCLUDED.object_version,
     df_object_id = EXCLUDED.df_object_id;
 ";
 
-#[derive(Clone)]
-pub struct PgIndexerStore {
-    blocking_cp: PgConnectionPool,
-    module_cache: Arc<SyncModuleCache<IndexerStorePackageModuleResolver>>,
+pub struct PgIndexerStore<T: R2D2Connection + Send + 'static> {
+    blocking_cp: ConnectionPool<T>,
+    module_cache: Arc<SyncModuleCache<IndexerStorePackageModuleResolver<T>>>,
     metrics: IndexerMetrics,
     parallel_chunk_size: usize,
     parallel_objects_chunk_size: usize,
-    partition_manager: PgPartitionManager,
+    partition_manager: PgPartitionManager<T>,
 }
 
-impl PgIndexerStore {
-    pub fn new(blocking_cp: PgConnectionPool, metrics: IndexerMetrics) -> Self {
-        let module_cache: Arc<SyncModuleCache<IndexerStorePackageModuleResolver>> = Arc::new(
+impl<T: R2D2Connection> Clone for PgIndexerStore<T> {
+    fn clone(&self) -> PgIndexerStore<T> {
+        Self {
+            blocking_cp: self.blocking_cp.clone(),
+            module_cache: self.module_cache.clone(),
+            metrics: self.metrics.clone(),
+            parallel_chunk_size: self.parallel_chunk_size,
+            parallel_objects_chunk_size: self.parallel_objects_chunk_size,
+            partition_manager: self.partition_manager.clone(),
+        }
+    }
+}
+
+impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
+    pub fn new(blocking_cp: ConnectionPool<T>, metrics: IndexerMetrics) -> Self {
+        let module_cache: Arc<SyncModuleCache<IndexerStorePackageModuleResolver<T>>> = Arc::new(
             SyncModuleCache::new(IndexerStorePackageModuleResolver::new(blocking_cp.clone())),
         );
         let parallel_chunk_size = std::env::var("PG_COMMIT_PARALLEL_CHUNK_SIZE")
@@ -140,7 +153,7 @@ impl PgIndexerStore {
         }
     }
 
-    pub fn blocking_cp(&self) -> PgConnectionPool {
+    pub fn blocking_cp(&self) -> ConnectionPool<T> {
         self.blocking_cp.clone()
     }
 
@@ -848,8 +861,8 @@ impl PgIndexerStore {
 }
 
 #[async_trait]
-impl IndexerStore for PgIndexerStore {
-    type ModuleCache = SyncModuleCache<IndexerStorePackageModuleResolver>;
+impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
+    type ModuleCache = SyncModuleCache<IndexerStorePackageModuleResolver<T>>;
 
     async fn get_latest_tx_checkpoint_sequence_number(&self) -> Result<Option<u64>, IndexerError> {
         self.execute_in_blocking_worker(|this| this.get_latest_tx_checkpoint_sequence_number())
@@ -1021,6 +1034,40 @@ impl IndexerStore for PgIndexerStore {
         Ok(())
     }
 
+    async fn persist_tx_indices(&self, indices: Vec<TxIndex>) -> Result<(), IndexerError> {
+        if indices.is_empty() {
+            return Ok(());
+        }
+        let len = indices.len();
+        let guard = self
+            .metrics
+            .checkpoint_db_commit_latency_tx_indices
+            .start_timer();
+        let chunks = chunk!(indices, self.parallel_chunk_size);
+
+        let futures = chunks
+            .into_iter()
+            .map(|chunk| {
+                self.spawn_task(move |this: Self| async move {
+                    this.persist_tx_indices_chunk(chunk).await
+                })
+            })
+            .collect::<Vec<_>>();
+        futures::future::join_all(futures)
+            .await
+            .into_iter()
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| {
+                IndexerError::PostgresWriteError(format!(
+                    "Failed to persist all tx_indices chunks: {:?}",
+                    e
+                ))
+            })?;
+        let elapsed = guard.stop_and_record();
+        info!(elapsed, "Persisted {} tx_indices", len);
+        Ok(())
+    }
+
     async fn persist_events(&self, events: Vec<IndexedEvent>) -> Result<(), IndexerError> {
         if events.is_empty() {
             return Ok(());
@@ -1069,40 +1116,6 @@ impl IndexerStore for PgIndexerStore {
         }
         self.execute_in_blocking_worker(move |this| this.persist_packages(packages))
             .await
-    }
-
-    async fn persist_tx_indices(&self, indices: Vec<TxIndex>) -> Result<(), IndexerError> {
-        if indices.is_empty() {
-            return Ok(());
-        }
-        let len = indices.len();
-        let guard = self
-            .metrics
-            .checkpoint_db_commit_latency_tx_indices
-            .start_timer();
-        let chunks = chunk!(indices, self.parallel_chunk_size);
-
-        let futures = chunks
-            .into_iter()
-            .map(|chunk| {
-                self.spawn_task(move |this: Self| async move {
-                    this.persist_tx_indices_chunk(chunk).await
-                })
-            })
-            .collect::<Vec<_>>();
-        futures::future::join_all(futures)
-            .await
-            .into_iter()
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| {
-                IndexerError::PostgresWriteError(format!(
-                    "Failed to persist all tx_indices chunks: {:?}",
-                    e
-                ))
-            })?;
-        let elapsed = guard.stop_and_record();
-        info!(elapsed, "Persisted {} tx_indices", len);
-        Ok(())
     }
 
     async fn persist_epoch(&self, epoch: EpochToCommit) -> Result<(), IndexerError> {

@@ -10,9 +10,10 @@ use core::result::Result::Ok;
 use diesel::dsl::count;
 use diesel::{ExpressionMethods, OptionalExtension};
 use diesel::{QueryDsl, RunQueryDsl};
+use diesel::r2d2::R2D2Connection;
 use sui_types::base_types::ObjectID;
 
-use crate::db::PgConnectionPool;
+use crate::db::{ConnectionPool};
 use crate::errors::{Context, IndexerError};
 use crate::models::address_metrics::StoredAddressMetrics;
 use crate::models::checkpoints::StoredCheckpoint;
@@ -29,35 +30,31 @@ use crate::schema::{
     active_addresses, address_metrics, addresses, checkpoints, epoch_peak_tps, move_call_metrics,
     move_calls, transactions, tx_count_metrics,
 };
-use crate::store::diesel_macro::{read_only_blocking, transactional_blocking_with_retry};
+use crate::store::diesel_macro::*;
 use crate::types::IndexerResult;
 
 use super::IndexerAnalyticalStore;
 
-#[derive(Clone)]
-pub struct PgIndexerAnalyticalStore {
-    blocking_cp: PgConnectionPool,
+pub struct PgIndexerAnalyticalStore<T: R2D2Connection + 'static> {
+    blocking_cp: ConnectionPool<T>,
 }
 
-impl PgIndexerAnalyticalStore {
-    pub fn new(blocking_cp: PgConnectionPool) -> Self {
+impl<T: R2D2Connection> Clone for PgIndexerAnalyticalStore<T> {
+    fn clone(&self) -> PgIndexerAnalyticalStore<T> {
+        Self {
+            blocking_cp: self.blocking_cp.clone()
+        }
+    }
+}
+
+impl<T: R2D2Connection + 'static> PgIndexerAnalyticalStore<T> {
+    pub fn new(blocking_cp: ConnectionPool<T>) -> Self {
         Self { blocking_cp }
     }
 }
 
 #[async_trait]
-impl IndexerAnalyticalStore for PgIndexerAnalyticalStore {
-    async fn get_latest_stored_checkpoint(&self) -> IndexerResult<Option<StoredCheckpoint>> {
-        let latest_cp = read_only_blocking!(&self.blocking_cp, |conn| {
-            checkpoints::dsl::checkpoints
-                .order(checkpoints::sequence_number.desc())
-                .first::<StoredCheckpoint>(conn)
-                .optional()
-        })
-        .context("Failed reading latest checkpoint from PostgresDB")?;
-        Ok(latest_cp)
-    }
-
+impl<T: R2D2Connection> IndexerAnalyticalStore for PgIndexerAnalyticalStore<T> {
     async fn get_latest_stored_transaction(&self) -> IndexerResult<Option<StoredTransaction>> {
         let latest_tx = read_only_blocking!(&self.blocking_cp, |conn| {
             transactions::dsl::transactions
@@ -67,6 +64,17 @@ impl IndexerAnalyticalStore for PgIndexerAnalyticalStore {
         })
         .context("Failed reading latest transaction from PostgresDB")?;
         Ok(latest_tx)
+    }
+
+    async fn get_latest_stored_checkpoint(&self) -> IndexerResult<Option<StoredCheckpoint>> {
+        let latest_cp = read_only_blocking!(&self.blocking_cp, |conn| {
+            checkpoints::dsl::checkpoints
+                .order(checkpoints::sequence_number.desc())
+                .first::<StoredCheckpoint>(conn)
+                .optional()
+        })
+        .context("Failed reading latest checkpoint from PostgresDB")?;
+        Ok(latest_cp)
     }
 
     async fn get_checkpoints_in_range(
@@ -350,6 +358,17 @@ impl IndexerAnalyticalStore for PgIndexerAnalyticalStore {
         Ok(())
     }
 
+    async fn get_latest_move_call_metrics(&self) -> IndexerResult<Option<StoredMoveCallMetrics>> {
+        let latest_move_call_metrics = read_only_blocking!(&self.blocking_cp, |conn| {
+            move_call_metrics::dsl::move_call_metrics
+                .order(move_call_metrics::epoch.desc())
+                .first::<QueriedMoveCallMetrics>(conn)
+                .optional()
+        })
+        .unwrap_or_default();
+        Ok(latest_move_call_metrics.map(|m| m.into()))
+    }
+
     async fn get_latest_move_call_tx_seq(&self) -> IndexerResult<Option<TxSeq>> {
         let last_processed_tx_seq = read_only_blocking!(&self.blocking_cp, |conn| {
             move_calls::dsl::move_calls
@@ -360,17 +379,6 @@ impl IndexerAnalyticalStore for PgIndexerAnalyticalStore {
         })
         .unwrap_or_default();
         Ok(last_processed_tx_seq)
-    }
-
-    async fn get_latest_move_call_metrics(&self) -> IndexerResult<Option<StoredMoveCallMetrics>> {
-        let latest_move_call_metrics = read_only_blocking!(&self.blocking_cp, |conn| {
-            move_call_metrics::dsl::move_call_metrics
-                .order(move_call_metrics::epoch.desc())
-                .first::<QueriedMoveCallMetrics>(conn)
-                .optional()
-        })
-        .unwrap_or_default();
-        Ok(latest_move_call_metrics.map(|m| m.into()))
     }
 
     fn persist_move_calls_in_tx_range(

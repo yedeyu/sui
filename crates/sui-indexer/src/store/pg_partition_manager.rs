@@ -5,12 +5,13 @@ use diesel::sql_types::{BigInt, VarChar};
 use diesel::{QueryableByName, RunQueryDsl};
 use std::collections::BTreeMap;
 use std::time::Duration;
+use diesel::r2d2::R2D2Connection;
 use tracing::{error, info};
 
-use crate::db::PgConnectionPool;
+use crate::db::{ConnectionPool};
 use crate::handlers::EpochToCommit;
 use crate::models::epoch::StoredEpochInfo;
-use crate::store::diesel_macro::{read_only_blocking, transactional_blocking_with_retry};
+use crate::store::diesel_macro::*;
 use crate::IndexerError;
 
 const GET_PARTITION_SQL: &str = r"
@@ -26,8 +27,8 @@ GROUP BY table_name;
 ";
 
 #[derive(Clone)]
-pub struct PgPartitionManager {
-    cp: PgConnectionPool,
+pub struct PgPartitionManager<T: R2D2Connection + Send + 'static> {
+    cp: ConnectionPool<T>,
 }
 
 #[derive(Clone, Debug)]
@@ -53,8 +54,8 @@ impl EpochPartitionData {
     }
 }
 
-impl PgPartitionManager {
-    pub fn new(cp: PgConnectionPool) -> Result<Self, IndexerError> {
+impl<T: R2D2Connection> PgPartitionManager<T> {
+    pub fn new(cp: ConnectionPool<T>) -> Result<Self, IndexerError> {
         let manager = Self { cp };
         let tables = manager.get_table_partitions()?;
         info!(
