@@ -23,8 +23,8 @@ use serde::{Deserialize, Serialize};
 use shared_crypto::intent::{Intent, IntentMessage, IntentScope};
 
 use crate::{
+    commit::CommitRef,
     context::Context,
-    commit::CommitRef
     ensure,
     error::{ConsensusError, ConsensusResult},
 };
