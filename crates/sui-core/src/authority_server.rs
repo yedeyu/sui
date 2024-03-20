@@ -724,17 +724,7 @@ impl Validator for ValidatorService {
         &self,
         request: tonic::Request<CertifiedTransaction>,
     ) -> Result<tonic::Response<SubmitCertificateResponse>, tonic::Status> {
-        let validator_service = self.clone();
-        // Spawns a task which handles the certificate. The task will unconditionally continue
-        // processing in the event that the client connection is dropped.
-        spawn_monitored_task!(async move {
-            // let service_clone = validator_service.clone();
-            // NB: traffic tally wrapping handled within the task rather than on task exit
-            // to prevent an attacker from subverting traffic control by severing the connection
-            handle_with_decoration!(validator_service, submit_certificate_impl, request)
-        })
-        .await
-        .unwrap()
+        handle_with_decoration!(validator_service, submit_certificate_impl, request)
     }
 
     async fn handle_certificate_v2(
