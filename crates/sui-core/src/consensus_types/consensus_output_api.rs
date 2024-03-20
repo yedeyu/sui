@@ -108,7 +108,7 @@ impl ConsensusOutputAPI for mysticeti_core::consensus::linearizer::CommittedSubD
     }
 
     fn leader_round(&self) -> u64 {
-        self.anchor.round as u64
+        self.anchor.round
     }
 
     fn leader_author_index(&self) -> AuthorityIndex {

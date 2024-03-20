@@ -43,7 +43,7 @@ pub mod mysticeti_manager_tests;
 
 pub struct MysticetiManager {
     keypair: AuthorityKeyPair,
-    network_keypair: NetworkKeyPair,
+    _network_keypair: NetworkKeyPair,
     storage_base_path: PathBuf,
     running: Mutex<Running>,
     metrics: ConsensusManagerMetrics,
@@ -61,7 +61,7 @@ pub struct MysticetiManager {
 impl MysticetiManager {
     pub fn new(
         keypair: AuthorityKeyPair,
-        network_keypair: NetworkKeyPair,
+        _network_keypair: NetworkKeyPair,
         storage_base_path: PathBuf,
         metrics: ConsensusManagerMetrics,
         registry_service: RegistryService,
@@ -69,7 +69,7 @@ impl MysticetiManager {
     ) -> Self {
         Self {
             keypair,
-            network_keypair,
+            _network_keypair,
             storage_base_path,
             running: Mutex::new(Running::False),
             metrics,
