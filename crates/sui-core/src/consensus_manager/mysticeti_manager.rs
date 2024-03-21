@@ -124,7 +124,7 @@ impl ConsensusManagerTrait for MysticetiManager {
             .into();
         let config = PrivateConfig::new(self.get_store_path(epoch), authority_index);
 
-        let registry = Registry::new_custom(Some("mysticeti_".to_string()), None).unwrap();
+        let registry = Registry::new_custom(Some("consensus".to_string()), None).unwrap();
 
         const MAX_RETRIES: u32 = 2;
         let mut retries = 0;
