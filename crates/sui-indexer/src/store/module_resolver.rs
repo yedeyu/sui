@@ -49,7 +49,9 @@ impl<T: R2D2Connection + 'static> ModuleResolver for IndexerStorePackageModuleRe
             packages::dsl::packages
                 .filter(packages::dsl::package_id.eq(package_id))
                 .first::<StoredPackage>(conn)
-        })
+        },
+        false
+        )
         .context("Error reading module.")?;
 
         let move_package =
@@ -100,7 +102,7 @@ impl<T: R2D2Connection> IndexerStorePackageModuleResolver<T> {
                 .select(objects::dsl::object_version)
                 .filter(objects::dsl::object_id.eq(id.to_vec()));
             query.get_result::<i64>(conn).optional()
-        })?
+        }, false)?
         else {
             return Err(IndexerError::PostgresReadError(format!(
                 "Package version not found in DB: {:?}",
@@ -117,7 +119,7 @@ impl<T: R2D2Connection> IndexerStorePackageModuleResolver<T> {
                 .select(objects::dsl::serialized_object)
                 .filter(objects::dsl::object_id.eq(id.to_vec()));
             query.get_result::<Vec<u8>>(conn).optional()
-        })?
+        }, false)?
         else {
             return Err(IndexerError::PostgresReadError(format!(
                 "Package not found in DB: {:?}",

@@ -105,12 +105,8 @@ impl<T: R2D2Connection> diesel::r2d2::CustomizeConnection<T, diesel::r2d2::Error
     fn on_acquire(&self, conn: &mut T) -> std::result::Result<(), diesel::r2d2::Error> {
         #[cfg(feature = "postgres-feature")]
         {
-            if let Some(conn) = conn.downcast_mut::<PgConnection>() {
-                self.pg_acquire(conn)
-            } else {
-                // Handle cases where T is not PgConnection
-                Ok(())
-            }
+            let pg_conn = unsafe { &mut *(&conn as *const _ as *mut diesel::PgConnection) };
+            self.pg_acquire(pg_conn)
         }
         #[cfg(not(feature = "postgres-feature"))]
         {

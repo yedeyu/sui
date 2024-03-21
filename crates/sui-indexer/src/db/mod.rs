@@ -8,6 +8,7 @@ use diesel::migration::MigrationSource;
 use diesel::{Connection, PgConnection, RunQueryDsl};
 use diesel::backend::DieselReserveSpecialization;
 use diesel::r2d2::{ConnectionManager, R2D2Connection};
+use diesel::result::Error;
 use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
 use thiserror::Error;
 use tracing::info;
@@ -21,6 +22,24 @@ pub enum DbError {
     MissingUrlError,
     #[error("Unsupported database backend selected")]
     UnsupportedBackend,
+}
+
+trait DbConn {
+
+
+}
+
+trait PooledDbConn {
+    fn read_only_blocking<T, E, F>(&mut self, f: F) -> Result<T, E>
+        where
+            F: FnOnce(&mut dyn DbConn) -> Result<T, E>,
+            E: From<Error>;
+
+}
+
+struct DbConnPool {
+    fn get_pool
+
 }
 
 pub type ConnectionPool<T> = diesel::r2d2::Pool<ConnectionManager<T>>;

@@ -26,9 +26,16 @@ WHERE parent.relkind = 'p'
 GROUP BY table_name;
 ";
 
-#[derive(Clone)]
 pub struct PgPartitionManager<T: R2D2Connection + Send + 'static> {
     cp: ConnectionPool<T>,
+}
+
+impl<T: R2D2Connection> Clone for PgPartitionManager<T> {
+    fn clone(&self) -> PgPartitionManager<T> {
+        Self {
+            cp: self.cp.clone(),
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -79,7 +86,7 @@ impl<T: R2D2Connection> PgPartitionManager<T> {
             read_only_blocking!(&self.cp, |conn| diesel::RunQueryDsl::load(
                 diesel::sql_query(GET_PARTITION_SQL),
                 conn
-            ))?
+            ), false)?
             .into_iter()
             .map(|table: PartitionedTable| (table.table_name, table.last_partition as u64))
             .collect(),

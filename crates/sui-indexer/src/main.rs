@@ -39,7 +39,7 @@ mod setup_postgres {
     use diesel::r2d2::R2D2Connection;
     use diesel_migrations::{embed_migrations, EmbeddedMigrations, MigrationHarness};
     use tracing::{error, info};
-    use sui_indexer::db::{get_pool_connection, new_connection_pool, PooledConnection, reset_database};
+    use sui_indexer::db::{get_pool_connection, new_connection_pool, PooledConnection};
     use sui_indexer::errors::IndexerError;
     use sui_indexer::indexer::Indexer;
     use sui_indexer::IndexerConfig;

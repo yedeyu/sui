@@ -135,8 +135,7 @@ impl<U: R2D2Connection + 'static> IndexerReader<U> {
     {
         blocking_call_is_ok_or_panic();
 
-        let mut connection = self.get_connection()?;
-        read_only_blocking!(&connection, query)
+        read_only_blocking!(&self.pool, query, false)
     }
 
     pub fn run_query_repeatable<T, E, F>(&self, query: F) -> Result<T, IndexerError>
@@ -147,13 +146,7 @@ impl<U: R2D2Connection + 'static> IndexerReader<U> {
     {
         blocking_call_is_ok_or_panic();
 
-        let mut connection = self.get_connection()?;
-        connection
-            .build_transaction()
-            .read_only()
-            .repeatable_read()
-            .run(query)
-            .map_err(|e| IndexerError::PostgresReadError(e.to_string()))
+        read_only_blocking!(&self.pool, query, true)
     }
 
     pub async fn spawn_blocking<F, R, E>(&self, f: F) -> Result<R, E>

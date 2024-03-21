@@ -116,7 +116,7 @@ pub struct CheckpointHandler<S, T> {
 impl<S, T> Handler for CheckpointHandler<S, T>
 where
     S: IndexerStore + Clone + Sync + Send + 'static,
-    T: R2D2Connection
+    T: R2D2Connection + 'static
 {
     fn name(&self) -> &str {
         "checkpoint-handler"

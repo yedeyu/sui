@@ -11,7 +11,7 @@ use diesel::r2d2::R2D2Connection;
 use sui_json_rpc_types::SuiTransactionBlockResponse;
 use tracing::info;
 
-use crate::db::{new_connection_pool, reset_database};
+use crate::db::{new_connection_pool};
 use crate::errors::IndexerError;
 use crate::indexer::Indexer;
 use crate::processors::objects_snapshot_processor::SnapshotLagConfig;
@@ -118,9 +118,9 @@ pub async fn start_test_indexer_impl<T: R2D2Connection>(
             tokio::spawn(async move { Indexer::start_reader::<T>(&config, &registry, db_url).await })
         }
         ReaderWriterConfig::Writer { snapshot_config } => {
-            if config.reset_db {
-                reset_database(&mut blocking_pool.get().unwrap(), true).unwrap();
-            }
+            // if config.reset_db {
+            //     reset_database(&mut blocking_pool.get().unwrap(), true).unwrap();
+            // }
             let store_clone = store.clone();
 
             tokio::spawn(async move {

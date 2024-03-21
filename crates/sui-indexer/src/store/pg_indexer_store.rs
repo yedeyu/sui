@@ -163,7 +163,7 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
                 .select(max(checkpoints::sequence_number))
                 .first::<Option<i64>>(conn)
                 .map(|v| v.map(|v| v as u64))
-        })
+        }, false)
         .context("Failed reading latest checkpoint sequence number from PostgresDB")
     }
 
@@ -175,7 +175,7 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
                 .select(max(objects_snapshot::checkpoint_sequence_number))
                 .first::<Option<i64>>(conn)
                 .map(|v| v.map(|v| v as u64))
-        })
+        }, false)
         .context("Failed reading latest object snapshot checkpoint sequence number from PostgresDB")
     }
 
@@ -200,7 +200,7 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
                 None => Ok(ObjectRead::NotExists(object_id)),
                 Some(obj) => obj.try_into_object_read(self.module_cache.as_ref()),
             }
-        })
+        }, false)
         .context("Failed to read object from PostgresDB")
     }
 
@@ -771,7 +771,7 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
                         .filter(epochs::epoch.eq(last_epoch_id as i64))
                         .first::<StoredEpochInfo>(conn)
                         .optional()
-                })
+                }, false)
                 .context("Failed to read last epoch from PostgresDB")?;
             if let Some(last_epoch) = last_db_epoch {
                 let epoch_partition_data =
@@ -810,7 +810,7 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
                 .select(max(checkpoints::network_total_transactions))
                 .first::<Option<i64>>(conn)
                 .map(|o| o.unwrap_or(0))
-        })
+        }, false)
         .context("Failed to get network total transactions in epoch")
         .map(|v| v as u64)
     }

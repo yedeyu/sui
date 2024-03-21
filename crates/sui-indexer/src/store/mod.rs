@@ -5,6 +5,8 @@ pub(crate) use indexer_analytical_store::*;
 pub(crate) use indexer_store::*;
 pub use pg_indexer_analytical_store::PgIndexerAnalyticalStore;
 pub use pg_indexer_store::PgIndexerStore;
+use diesel::prelude::*;
+use std::cell::UnsafeCell;
 
 mod indexer_analytical_store;
 pub mod indexer_store;
@@ -17,32 +19,41 @@ mod query;
 pub(crate) mod diesel_macro {
     #[cfg(feature = "mysql-feature")]
     macro_rules! read_only_blocking_mysql {
-                ($pool:expr, $query:expr) => {{
+                ($pool:expr, $query:expr, $repeatable_read:expr) => {{
                      let pool_conn = crate::db::get_pool_connection($pool)?;
-                     let mysql_pool_conn = unsafe { &mut *(&pool_conn as *const _ as *mut crate::db::PooledConnection<diesel::MysqlConnection>) };
+                     let cell: std::cell::UnsafeCell<crate::db::PooledConnection<diesel::MysqlConnection>> = std::cell::UnsafeCell::new(*pool_conn);
+                     let mysql_pool_conn = unsafe { &mut *cell.get() };
+                     //let mysql_pool_conn = unsafe { &mut *(&pool_conn as *const _ as *mut crate::db::PooledConnection<diesel::MysqlConnection>) };
                      mysql_pool_conn.transaction($query).map_err(|e| IndexerError::PostgresReadError(e.to_string()))
                 }};
             }
 
     #[cfg(feature = "postgres-feature")]
     macro_rules! read_only_blocking_pg {
-                ($pool:expr, $query:expr) => {{
+                ($pool:expr, $query:expr, $repeatable_read:expr) => {{
                     let pool_conn = crate::db::get_pool_connection($pool)?;
-                    let pg_pool_conn = unsafe { &mut *(&pool_conn as *const _ as *mut crate::db::PooledConnection<diesel::PgConnection>) };
-                    pg_pool_conn.build_transaction().read_only().run($query).map_err(|e| IndexerError::PostgresReadError(e.to_string()))
+                    let pg_pool_conn = unsafe { *(&pool_conn as *const _ as *const crate::db::PooledConnection<diesel::PgConnection>) };
+                    let cell: std::cell::UnsafeCell<crate::db::PooledConnection<diesel::PgConnection>> = std::cell::UnsafeCell::new(*pg_pool_conn);
+                    let mut_pg_pool_conn = unsafe { &mut *cell.get() };
+                    //let pg_pool_conn = unsafe { &mut *(&pool_conn as *const _ as *mut crate::db::PooledConnection<diesel::PgConnection>) };
+                    if $repeatable_read {
+                        mut_pg_pool_conn.build_transaction().read_only().repeatable_read().run($query).map_err(|e| IndexerError::PostgresReadError(e.to_string()))
+                    } else {
+                        mut_pg_pool_conn.build_transaction().read_only().run($query).map_err(|e| IndexerError::PostgresReadError(e.to_string()))
+                    }
                 }};
             }
 
     macro_rules! read_only_blocking {
-    ($pool:expr, $query:expr) => {{
+    ($pool:expr, $query:expr, $repeatable_read:expr) => {{
         #[cfg(feature = "postgres-feature")]
         {
-            read_only_blocking_pg!($pool, $query)
+            read_only_blocking_pg!($pool, $query, $repeatable_read)
         }
 
         #[cfg(feature = "mysql-feature")]
         {
-            read_only_blocking_mysql!($pool, $query)
+            read_only_blocking_mysql!($pool, $query, $repeatable_read)
         }
     }};
 }
