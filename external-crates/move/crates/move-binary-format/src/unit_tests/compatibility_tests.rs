@@ -467,7 +467,6 @@ fn make_complex_module_perm(p: Permutation) -> normalized::Module {
             EnumDefinition {
                 enum_handle: DatatypeHandleIndex(p.permute(4)),
                 variants: vec![VariantDefinition {
-                    enum_def: EnumDefinitionIndex(p.permute(0)),
                     variant_name: IdentifierIndex(p.permute(0)),
                     fields: vec![FieldDefinition {
                         name: IdentifierIndex(p.permute(4)),
@@ -478,7 +477,6 @@ fn make_complex_module_perm(p: Permutation) -> normalized::Module {
             EnumDefinition {
                 enum_handle: DatatypeHandleIndex(p.permute(5)),
                 variants: vec![VariantDefinition {
-                    enum_def: EnumDefinitionIndex(p.permute(1)),
                     variant_name: IdentifierIndex(p.permute(0)),
                     fields: vec![
                         FieldDefinition {
@@ -495,7 +493,6 @@ fn make_complex_module_perm(p: Permutation) -> normalized::Module {
             EnumDefinition {
                 enum_handle: DatatypeHandleIndex(p.permute(6)),
                 variants: vec![VariantDefinition {
-                    enum_def: EnumDefinitionIndex(p.permute(0)),
                     variant_name: IdentifierIndex(p.permute(0)),
                     fields: vec![FieldDefinition {
                         name: IdentifierIndex(p.permute(4)),
@@ -506,7 +503,6 @@ fn make_complex_module_perm(p: Permutation) -> normalized::Module {
             EnumDefinition {
                 enum_handle: DatatypeHandleIndex(p.permute(7)),
                 variants: vec![VariantDefinition {
-                    enum_def: EnumDefinitionIndex(p.permute(0)),
                     variant_name: IdentifierIndex(p.permute(0)),
                     fields: vec![FieldDefinition {
                         name: IdentifierIndex(p.permute(4)),

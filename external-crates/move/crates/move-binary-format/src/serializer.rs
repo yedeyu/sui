@@ -640,7 +640,6 @@ fn serialize_variant_definition(
     binary: &mut BinaryData,
     variant_definition: &VariantDefinition,
 ) -> Result<()> {
-    serialize_enum_def_index(binary, &variant_definition.enum_def)?;
     serialize_identifier_index(binary, &variant_definition.variant_name)?;
     serialize_field_definitions(binary, &variant_definition.fields)
 }

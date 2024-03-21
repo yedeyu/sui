@@ -195,15 +195,15 @@ impl AbstractState {
     fn add_variant_field_borrow(
         &mut self,
         parent: RefID,
+        enum_def_idx: EnumDefinitionIndex,
         variant_tag: VariantTag,
-        variant_def: &VariantDefinition,
         field_index: MemberCount,
         child_id: RefID,
     ) {
         self.borrow_graph.add_strong_field_borrow(
             (),
             parent,
-            Label::VariantField(variant_def.enum_def, variant_tag, field_index),
+            Label::VariantField(enum_def_idx, variant_tag, field_index),
             child_id,
         )
     }
@@ -476,6 +476,7 @@ impl AbstractState {
     pub fn unpack_enum_variant_ref(
         &mut self,
         offset: CodeOffset,
+        enum_def_idx: EnumDefinitionIndex,
         variant_tag: VariantTag,
         variant_def: &VariantDefinition,
         mut_: bool,
@@ -499,8 +500,8 @@ impl AbstractState {
                 let field_borrow_id = self.new_ref(mut_);
                 self.add_variant_field_borrow(
                     id,
+                    enum_def_idx,
                     variant_tag,
-                    variant_def,
                     i as MemberCount,
                     field_borrow_id,
                 );

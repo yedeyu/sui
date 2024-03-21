@@ -5,8 +5,8 @@
 use crate::{
     file_format::{
         AbilitySet, DatatypeHandle, DatatypeHandleIndex, DatatypeTyParameter, EnumDefinition,
-        EnumDefinitionIndex, FieldDefinition, IdentifierIndex, ModuleHandleIndex, SignatureToken,
-        StructDefinition, StructFieldInformation, TableIndex, TypeSignature, VariantDefinition,
+        FieldDefinition, IdentifierIndex, ModuleHandleIndex, SignatureToken, StructDefinition,
+        StructFieldInformation, TableIndex, TypeSignature, VariantDefinition,
     },
     internals::ModuleIndex,
     proptest_types::{
@@ -279,16 +279,11 @@ impl EnumDefinitionGen {
             )
     }
 
-    pub fn materialize(
-        self,
-        state: &mut StDefnMaterializeState,
-        index: usize,
-    ) -> Option<EnumDefinition> {
+    pub fn materialize(self, state: &mut StDefnMaterializeState) -> Option<EnumDefinition> {
         let mut variant_names = HashSet::new();
         let mut variants = vec![];
-        let enum_idx = EnumDefinitionIndex(index as TableIndex);
         for vd_gen in self.variant_defs {
-            let variant = vd_gen.materialize(state, enum_idx);
+            let variant = vd_gen.materialize(state);
             if variant_names.insert(variant.variant_name) {
                 variants.push(variant);
             }
@@ -344,11 +339,7 @@ impl VariantDefinitionGen {
             })
     }
 
-    fn materialize(
-        self,
-        state: &StDefnMaterializeState,
-        enum_def: EnumDefinitionIndex,
-    ) -> VariantDefinition {
+    fn materialize(self, state: &StDefnMaterializeState) -> VariantDefinition {
         let mut field_names = HashSet::new();
         let mut fields = vec![];
         for fd_gen in self.signature_gen {
@@ -359,7 +350,6 @@ impl VariantDefinitionGen {
         }
         VariantDefinition {
             variant_name: IdentifierIndex(self.name_idx.index(state.identifiers_len) as TableIndex),
-            enum_def,
             fields,
         }
     }

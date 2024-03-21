@@ -779,7 +779,6 @@ fn compile_variants(
         }
         record_src_loc!(variant: context, ed_idx, variant, field_locs);
         variant_outputs.push(VariantDefinition {
-            enum_def: ed_idx,
             variant_name,
             fields: decl_fields,
         })

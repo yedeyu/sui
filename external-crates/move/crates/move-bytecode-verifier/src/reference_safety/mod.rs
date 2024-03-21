@@ -490,7 +490,14 @@ fn execute_inner(
                 .variant_def_at(handle.enum_def, handle.variant)?;
             let id = safe_unwrap!(safe_unwrap_err!(verifier.stack.pop()).ref_id());
             for val in state
-                .unpack_enum_variant_ref(offset, handle.variant, variant_def, false, id)?
+                .unpack_enum_variant_ref(
+                    offset,
+                    handle.enum_def,
+                    handle.variant,
+                    variant_def,
+                    false,
+                    id,
+                )?
                 .into_iter()
             {
                 verifier.push(val)?
@@ -503,7 +510,14 @@ fn execute_inner(
                 .variant_def_at(handle.enum_def, handle.variant)?;
             let id = safe_unwrap!(safe_unwrap_err!(verifier.stack.pop()).ref_id());
             for val in state
-                .unpack_enum_variant_ref(offset, handle.variant, variant_def, true, id)?
+                .unpack_enum_variant_ref(
+                    offset,
+                    handle.enum_def,
+                    handle.variant,
+                    variant_def,
+                    true,
+                    id,
+                )?
                 .into_iter()
             {
                 verifier.push(val)?
@@ -517,7 +531,14 @@ fn execute_inner(
                 .variant_def_at(enum_def.def, handle.variant)?;
             let id = safe_unwrap!(safe_unwrap_err!(verifier.stack.pop()).ref_id());
             for val in state
-                .unpack_enum_variant_ref(offset, handle.variant, variant_def, false, id)?
+                .unpack_enum_variant_ref(
+                    offset,
+                    enum_def.def,
+                    handle.variant,
+                    variant_def,
+                    false,
+                    id,
+                )?
                 .into_iter()
             {
                 verifier.push(val)?
@@ -531,7 +552,14 @@ fn execute_inner(
                 .variant_def_at(enum_def.def, handle.variant)?;
             let id = safe_unwrap!(safe_unwrap_err!(verifier.stack.pop()).ref_id());
             for val in state
-                .unpack_enum_variant_ref(offset, handle.variant, variant_def, true, id)?
+                .unpack_enum_variant_ref(
+                    offset,
+                    enum_def.def,
+                    handle.variant,
+                    variant_def,
+                    true,
+                    id,
+                )?
                 .into_iter()
             {
                 verifier.push(val)?

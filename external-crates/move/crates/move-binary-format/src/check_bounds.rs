@@ -413,25 +413,11 @@ impl<'a> BoundsChecker<'a> {
             .get(enum_def.enum_handle.into_index())
             .map_or(0, |eh| eh.type_parameters.len());
         for VariantDefinition {
-            enum_def,
             variant_name,
             fields,
         } in &enum_def.variants
         {
             check_bounds_impl(self.view.identifiers(), *variant_name)?;
-            match self.view.enum_defs() {
-                None => {
-                    return Err(verification_error(
-                        StatusCode::INDEX_OUT_OF_BOUNDS,
-                        IndexKind::EnumDefinition,
-                        0 as TableIndex,
-                    ));
-                }
-                Some(enum_defs) => {
-                    check_bounds_impl(enum_defs, *enum_def)?;
-                }
-            }
-
             for field in fields {
                 check_bounds_impl(self.view.identifiers(), field.name)?;
                 self.check_type(&field.signature.0)?;

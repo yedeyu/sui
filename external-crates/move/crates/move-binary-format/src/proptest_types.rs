@@ -328,9 +328,7 @@ impl CompiledModuleStrategyGen {
 
                     let mut enum_defs: Vec<EnumDefinition> = vec![];
                     for enum_def_gen in enum_def_gens {
-                        if let Some(enum_def) =
-                            enum_def_gen.materialize(&mut state, enum_defs.len())
-                        {
+                        if let Some(enum_def) = enum_def_gen.materialize(&mut state) {
                             enum_defs.push(enum_def);
                         }
                     }

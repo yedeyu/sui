@@ -1432,11 +1432,9 @@ fn load_variant_defs(cursor: &mut VersionedCursor) -> BinaryLoaderResult<Vec<Var
 }
 
 fn load_variant_def(cursor: &mut VersionedCursor) -> BinaryLoaderResult<VariantDefinition> {
-    let enum_def = load_enum_def_index(cursor)?;
     let variant_name = load_identifier_index(cursor)?;
     let fields = load_field_defs(cursor)?;
     Ok(VariantDefinition {
-        enum_def,
         variant_name,
         fields,
     })

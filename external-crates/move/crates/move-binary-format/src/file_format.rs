@@ -693,8 +693,6 @@ pub struct EnumDefInstantiation {
 #[cfg_attr(feature = "fuzzing", derive(arbitrary::Arbitrary))]
 #[cfg_attr(feature = "wasm", derive(Serialize, Deserialize))]
 pub struct VariantDefinition {
-    /// The `EnumDefinition` for that this `VariantDefinition` is part of.
-    pub enum_def: EnumDefinitionIndex,
     /// The name of this variant.
     pub variant_name: IdentifierIndex,
     /// The fields of this variant.
@@ -2629,7 +2627,6 @@ pub fn basic_test_module_with_enum() -> CompiledModule {
     m.enum_defs.push(EnumDefinition {
         enum_handle: DatatypeHandleIndex::new(1),
         variants: vec![VariantDefinition {
-            enum_def: EnumDefinitionIndex::new(0),
             variant_name: IdentifierIndex::new(0),
             fields: vec![],
         }],
