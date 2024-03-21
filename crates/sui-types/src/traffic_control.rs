@@ -1,4 +1,3 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
@@ -42,8 +41,8 @@ pub enum PolicyType {
 
 #[derive(Clone, Debug, Default)]
 pub struct PolicyResponse {
-    pub block_connection_ip: bool,
-    pub block_proxy_ip: bool,
+    pub block_connection_ip: Option<SocketAddr>,
+    pub block_proxy_ip: Option<SocketAddr>,
 }
 
 pub trait Policy {
@@ -156,14 +155,15 @@ impl Test3ConnIPPolicy {
 
     fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse {
         // increment the count for the IP
-        let count = self
-            .frequencies
-            .entry(tally.connection_ip.unwrap())
-            .or_insert(0);
-        *count += 1;
-        PolicyResponse {
-            block_connection_ip: *count >= 3,
-            block_proxy_ip: false,
+        if let Some(ip) = tally.connection_ip {
+            let count = self.frequencies.entry(ip).or_insert(0);
+            *count += 1;
+            PolicyResponse {
+                block_connection_ip: if *count >= 3 { Some(ip) } else { None },
+                block_proxy_ip: None,
+            }
+        } else {
+            PolicyResponse::default()
         }
     }
 
@@ -185,8 +185,8 @@ impl TestInspectIpPolicy {
     fn handle_tally(&mut self, tally: TrafficTally) -> PolicyResponse {
         assert!(tally.proxy_ip.is_some(), "Expected proxy_ip to be present");
         PolicyResponse {
-            block_connection_ip: false,
-            block_proxy_ip: false,
+            block_connection_ip: None,
+            block_proxy_ip: None,
         }
     }
 

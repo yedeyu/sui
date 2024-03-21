@@ -675,20 +675,24 @@ macro_rules! handle_with_decoration {
             }
         }
 
-        let proxy_ip: Option<SocketAddr> = $request.metadata().get("x-forwarded-for").map(|s| {
-            s.to_str()
-                .unwrap_or_else(|e| {
-                    panic!("Invalid UTF-8 in x-forwarded-for header: {:?}", e);
-                })
-                .to_string()
-                .parse()
-                .unwrap_or_else(|e| {
-                    panic!(
-                        "Failed to parse x-forwarded-for header value to SocketAddr: {:?}",
-                        e
-                    );
-                })
-        });
+        let proxy_ip: Option<SocketAddr> =
+            if let Some(op) = $request.metadata().get("x-forwarded-for") {
+                match op.to_str() {
+                    Ok(ip) => match ip.parse() {
+                        Ok(ret) => Some(ret),
+                        Err(e) => {
+                            error!("Failed to parse x-forwarded-for header value to SocketAddr: {:?}", e);
+                            None
+                        }
+                    },
+                    Err(e) => {
+                        error!("Invalid UTF-8 in x-forwarded-for header: {:?}", e);
+                        None
+                    }
+                }
+            } else {
+                None
+            };
 
         // check if either IP is blocked, in which case return early
         $self.handle_traffic_req(connection_ip, proxy_ip).await?;
@@ -724,7 +728,7 @@ impl Validator for ValidatorService {
         &self,
         request: tonic::Request<CertifiedTransaction>,
     ) -> Result<tonic::Response<SubmitCertificateResponse>, tonic::Status> {
-        handle_with_decoration!(validator_service, submit_certificate_impl, request)
+        handle_with_decoration!(self, submit_certificate_impl, request)
     }
 
     async fn handle_certificate_v2(

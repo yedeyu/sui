@@ -7,7 +7,6 @@ use std::net::SocketAddr;
 use std::time::Duration;
 use sui_core::authority_client::AuthorityAPI;
 use sui_macros::sim_test;
-use sui_network::tonic;
 use sui_test_transaction_builder::TestTransactionBuilder;
 use sui_types::{
     base_types::SuiAddress,
@@ -25,13 +24,6 @@ use sui_types::{
 };
 use test_cluster::{TestCluster, TestClusterBuilder};
 
-fn make_request_metadata() -> tonic::metadata::MetadataMap {
-    let client_addr = SocketAddr::new([127, 0, 0, 1].into(), 0);
-    let mut metadata = tonic::metadata::MetadataMap::new();
-    metadata.insert("x-forwarded-for", client_addr.to_string().parse().unwrap());
-    metadata
-}
-
 async fn do_upgraded_multisig_test() -> SuiResult {
     let test_cluster = TestClusterBuilder::new().build().await;
     let tx = make_upgraded_multisig_tx();
@@ -43,7 +35,7 @@ async fn do_upgraded_multisig_test() -> SuiResult {
         .next()
         .unwrap()
         .authority_client()
-        .handle_transaction(tx, Some(make_request_metadata()))
+        .handle_transaction(tx, Some(SocketAddr::new([127, 0, 0, 1].into(), 0)))
         .await
         .map(|_| ())
 }

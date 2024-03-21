@@ -348,23 +348,29 @@ async fn do_test_lock_table_upgrade() {
     };
 
     let t1 = transfer_sui(1);
-    test_cluster.create_certificate(t1.clone()).await.unwrap();
+    test_cluster
+        .create_certificate(t1.clone(), None)
+        .await
+        .unwrap();
 
     // attempt to equivocate
     let t2 = transfer_sui(2);
     test_cluster
-        .create_certificate(t2.clone())
+        .create_certificate(t2.clone(), None)
         .await
         .unwrap_err();
 
     test_cluster.wait_for_epoch_all_nodes(1).await;
 
     // old locks can be overridden in new epoch
-    test_cluster.create_certificate(t2.clone()).await.unwrap();
+    test_cluster
+        .create_certificate(t2.clone(), None)
+        .await
+        .unwrap();
 
     // attempt to equivocate
     test_cluster
-        .create_certificate(t1.clone())
+        .create_certificate(t1.clone(), None)
         .await
         .unwrap_err();
 }

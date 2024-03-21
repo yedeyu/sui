@@ -15,7 +15,6 @@ use std::sync::{Arc, Mutex};
 use sui_authority_aggregation::quorum_map_then_reduce_with_timeout;
 use sui_macros::sim_test;
 use sui_move_build::BuildConfig;
-use sui_network::tonic;
 use sui_types::crypto::get_key_pair_from_rng;
 use sui_types::crypto::{get_key_pair, AccountKeyPair, AuthorityKeyPair};
 use sui_types::crypto::{AuthoritySignature, Signer};
@@ -180,15 +179,6 @@ fn make_socket_addr() -> std::net::SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0)
 }
 
-fn make_request_metadata() -> tonic::metadata::MetadataMap {
-    let mut metadata = tonic::metadata::MetadataMap::new();
-    metadata.insert(
-        "x-forwarded-for",
-        make_socket_addr().to_string().parse().unwrap(),
-    );
-    metadata
-}
-
 pub async fn extract_cert<A>(
     authorities: &[Arc<SafeClient<A>>],
     committee: &Committee,
@@ -247,7 +237,7 @@ where
     A: AuthorityAPI + Send + Sync + Clone + 'static,
 {
     let result = authority
-        .handle_certificate_v2(cert.clone(), Some(make_request_metadata()))
+        .handle_certificate_v2(cert.clone(), Some(make_socket_addr()))
         .await;
     if result.is_err() {
         println!("Error in do cert {:?}", result.err());

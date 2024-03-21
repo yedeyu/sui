@@ -1,13 +1,12 @@
-// Copyright (c) 2021, Facebook, Inc. and its affiliates
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
 use std::net::SocketAddr;
 use std::{collections::HashMap, sync::Arc};
 
-use chrono::{DateTime, Utc};
 use mysten_metrics::spawn_monitored_task;
 use parking_lot::RwLock;
+use std::time::{Duration, SystemTime};
 use sui_types::traffic_control::{
     Policy, PolicyConfig, PolicyResponse, TrafficControlPolicy, TrafficTally,
 };
@@ -15,7 +14,7 @@ use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
 use tracing::warn;
 
-type BlocklistT = Arc<RwLock<HashMap<SocketAddr, DateTime<Utc>>>>;
+type BlocklistT = Arc<RwLock<HashMap<SocketAddr, SystemTime>>>;
 
 #[derive(Clone)]
 struct Blocklists {
@@ -82,7 +81,7 @@ impl TrafficController {
             self.blocklists.proxy_ips.clone()
         };
 
-        let now = Utc::now();
+        let now = SystemTime::now();
         let expiration = blocklist.read().get(&ip).copied();
         match expiration {
             Some(expiration) if now >= expiration => {
@@ -155,24 +154,16 @@ async fn handle_tally_impl(
         block_connection_ip,
         block_proxy_ip,
     } = policy.handle_tally(tally.clone());
-    if block_connection_ip {
+    if let Some(ip) = block_connection_ip {
         blocklists.connection_ips.write().insert(
-            tally
-                .connection_ip
-                .expect("Expected connection IP if policy is blocking it"),
-            Utc::now()
-                + chrono::Duration::seconds(
-                    config.connection_blocklist_ttl_sec.try_into().unwrap(),
-                ),
+            ip,
+            SystemTime::now() + Duration::from_secs(config.connection_blocklist_ttl_sec),
         );
     }
-    if block_proxy_ip {
+    if let Some(ip) = block_proxy_ip {
         blocklists.proxy_ips.write().insert(
-            tally
-                .proxy_ip
-                .expect("Expected proxy IP if policy is blocking it"),
-            Utc::now()
-                + chrono::Duration::seconds(config.proxy_blocklist_ttl_sec.try_into().unwrap()),
+            ip,
+            SystemTime::now() + Duration::from_secs(config.proxy_blocklist_ttl_sec),
         );
     }
 }

@@ -6,6 +6,7 @@ use anyhow::anyhow;
 use async_trait::async_trait;
 use mysten_network::config::Config;
 use std::collections::BTreeMap;
+use std::net::SocketAddr;
 use std::time::Duration;
 use sui_network::{api::ValidatorClient, tonic};
 use sui_types::base_types::AuthorityName;
@@ -31,14 +32,14 @@ pub trait AuthorityAPI {
     async fn handle_transaction(
         &self,
         transaction: Transaction,
-        metadata: Option<tonic::metadata::MetadataMap>,
+        client_addr: Option<SocketAddr>,
     ) -> Result<HandleTransactionResponse, SuiError>;
 
     /// Execute a certificate.
     async fn handle_certificate_v2(
         &self,
         certificate: CertifiedTransaction,
-        metadata: Option<tonic::metadata::MetadataMap>,
+        client_addr: Option<SocketAddr>,
     ) -> Result<HandleCertificateResponseV2, SuiError>;
 
     /// Handle Object information requests for this account.
@@ -107,10 +108,10 @@ impl AuthorityAPI for NetworkAuthorityClient {
     async fn handle_transaction(
         &self,
         transaction: Transaction,
-        metadata: Option<tonic::metadata::MetadataMap>,
+        client_addr: Option<SocketAddr>,
     ) -> Result<HandleTransactionResponse, SuiError> {
         let mut request = transaction.into_request();
-        insert_metadata(&mut request, metadata);
+        insert_metadata(&mut request, client_addr);
 
         self.client()
             .transaction(request)
@@ -123,10 +124,10 @@ impl AuthorityAPI for NetworkAuthorityClient {
     async fn handle_certificate_v2(
         &self,
         certificate: CertifiedTransaction,
-        metadata: Option<tonic::metadata::MetadataMap>,
+        client_addr: Option<SocketAddr>,
     ) -> Result<HandleCertificateResponseV2, SuiError> {
         let mut request = certificate.into_request();
-        insert_metadata(&mut request, metadata);
+        insert_metadata(&mut request, client_addr);
 
         let response = self
             .client()
@@ -229,11 +230,10 @@ pub fn make_authority_clients_with_timeout_config(
     make_network_authority_clients_with_network_config(committee, &network_config)
 }
 
-fn insert_metadata<T>(
-    request: &mut tonic::Request<T>,
-    metadata: Option<tonic::metadata::MetadataMap>,
-) {
-    if let Some(metadata) = metadata {
+fn insert_metadata<T>(request: &mut tonic::Request<T>, client_addr: Option<SocketAddr>) {
+    if let Some(client_addr) = client_addr {
+        let mut metadata = tonic::metadata::MetadataMap::new();
+        metadata.insert("x-forwarded-for", client_addr.to_string().parse().unwrap());
         metadata
             .iter()
             .for_each(|key_and_value| match key_and_value {
