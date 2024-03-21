@@ -10,15 +10,15 @@ use axum::{
     Router,
 };
 use axum::{Extension, Json};
-use chrono::{DateTime, Utc};
+use std::time::{Duration, SystemTime};
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 use tokio::sync::{Mutex, Notify};
 use tokio::task::JoinHandle;
 
 #[derive(Clone)]
 struct AppState {
-    /// BlockAddress -> expiry datetime
-    blocklist: Arc<Mutex<HashMap<BlockAddress, DateTime<Utc>>>>,
+    /// BlockAddress -> expiry time
+    blocklist: Arc<Mutex<HashMap<BlockAddress, SystemTime>>>,
 }
 
 pub struct NodeFwTestServer {
@@ -83,12 +83,12 @@ impl NodeFwTestServer {
     }
 
     async fn periodically_remove_expired_addresses(
-        blocklist: Arc<Mutex<HashMap<BlockAddress, DateTime<Utc>>>>,
+        blocklist: Arc<Mutex<HashMap<BlockAddress, SystemTime>>>,
     ) {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
             let mut blocklist = blocklist.lock().await;
-            let now = Utc::now();
+            let now = SystemTime::now();
             blocklist.retain(|_address, expiry| now < *expiry);
         }
     }
@@ -102,7 +102,7 @@ impl NodeFwTestServer {
         for addr in addresses.addresses.iter() {
             blocklist.insert(
                 addr.clone(),
-                Utc::now() + chrono::Duration::seconds(addr.ttl as i64),
+                SystemTime::now() + Duration::from_secs(addr.ttl),
             );
         }
         (StatusCode::CREATED, "created")

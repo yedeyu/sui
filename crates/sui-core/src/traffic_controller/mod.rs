@@ -172,16 +172,9 @@ async fn handle_error_tally(
         let client = nodefw_client
             .as_ref()
             .expect("Expected NodeFWClient for blocklist delegation");
-        delegate_policy_response(
-            resp,
-            policy_config,
-            client,
-            tally,
-            fw_config.destination_port,
-        )
-        .await
+        delegate_policy_response(resp, policy_config, client, fw_config.destination_port).await
     } else {
-        handle_policy_response(resp, policy_config, tally, blocklists).await;
+        handle_policy_response(resp, policy_config, blocklists).await;
         Ok(())
     }
 }
@@ -199,16 +192,9 @@ async fn handle_spam_tally(
         let client = nodefw_client
             .as_ref()
             .expect("Expected NodeFWClient for blocklist delegation");
-        delegate_policy_response(
-            resp,
-            policy_config,
-            client,
-            tally,
-            fw_config.destination_port,
-        )
-        .await
+        delegate_policy_response(resp, policy_config, client, fw_config.destination_port).await
     } else {
-        handle_policy_response(resp, policy_config, tally, blocklists).await;
+        handle_policy_response(resp, policy_config, blocklists).await;
         Ok(())
     }
 }
@@ -223,19 +209,18 @@ async fn handle_policy_response(
         proxy_blocklist_ttl_sec,
         ..
     }: &PolicyConfig,
-    tally: TrafficTally,
     blocklists: Arc<Blocklists>,
 ) {
     if let Some(ip) = block_connection_ip {
         blocklists.connection_ips.write().insert(
             ip,
-            SystemTime::now() + Duration::from_secs(*connection_blocklist_ttl_sec as i64),
+            SystemTime::now() + Duration::from_secs(*connection_blocklist_ttl_sec),
         );
     }
     if let Some(ip) = block_proxy_ip {
         blocklists.proxy_ips.write().insert(
             ip,
-            SystemTime::now() + Duration::from_secs(*proxy_blocklist_ttl_sec as i64),
+            SystemTime::now() + Duration::from_secs(*proxy_blocklist_ttl_sec),
         );
     }
 }
@@ -251,20 +236,19 @@ async fn delegate_policy_response(
         ..
     }: &PolicyConfig,
     node_fw_client: &NodeFWClient,
-    tally: TrafficTally,
     destination_port: u16,
 ) -> Result<(), reqwest::Error> {
     let mut addresses = vec![];
-    if block_connection_ip {
+    if let Some(ip) = block_connection_ip {
         addresses.push(BlockAddress {
-            source_address: tally.connection_ip.unwrap().to_string(),
+            source_address: ip.to_string(),
             destination_port,
             ttl: *connection_blocklist_ttl_sec,
         });
     }
-    if block_proxy_ip {
+    if let Some(ip) = block_proxy_ip {
         addresses.push(BlockAddress {
-            source_address: tally.proxy_ip.unwrap().to_string(),
+            source_address: ip.to_string(),
             destination_port,
             ttl: *proxy_blocklist_ttl_sec,
         });
