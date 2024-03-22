@@ -2246,9 +2246,9 @@ impl Bytecode {
         }
 
         // always give successors in ascending order
-        if v.len() > 1 && v[0] > v[1] {
-            v.swap(0, 1);
-        }
+        // NB: the size of `v` is generally quite small (bounded by maximum # of variants allowed
+        // in a variant jump table), so a sort here is not a performance concern.
+        v.sort();
 
         v
     }
