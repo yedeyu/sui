@@ -447,8 +447,6 @@ pub enum SuiError {
         new_epoch: EpochId,
         locked_by_tx: TransactionDigest,
     },
-    #[error("Too many requests")]
-    TooManyRequests,
     #[error("{TRANSACTION_NOT_FOUND_MSG_PREFIX} [{:?}].", digest)]
     TransactionNotFound { digest: TransactionDigest },
     #[error("{TRANSACTIONS_NOT_FOUND_MSG_PREFIX} [{:?}].", digests)]
@@ -619,6 +617,9 @@ pub enum SuiError {
 
     #[error("Validator cannot handle the request at the moment. Please retry after at least {retry_after_secs} seconds.")]
     ValidatorOverloadedRetryAfter { retry_after_secs: u64 },
+
+    #[error("Too many requests")]
+    TooManyRequests,
 }
 
 #[repr(u64)]
