@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 mod postgres;
 
+use std::any::Any;
 use std::time::Duration;
 use anyhow::anyhow;
 use diesel::migration::MigrationSource;
@@ -24,28 +25,20 @@ pub enum DbError {
     UnsupportedBackend,
 }
 
-trait DbConn {
-
-
+trait DBConn {
+    fn as_any(&self) -> &dyn Any;
 }
 
-trait PooledDbConn {
-    fn read_only_blocking<T, E, F>(&mut self, f: F) -> Result<T, E>
-        where
-            F: FnOnce(&mut dyn DbConn) -> Result<T, E>,
-            E: From<Error>;
-
-}
-
-struct DbConnPool {
-    fn get_pool
-
-}
+// impl<M> DBConn for PooledConnection<M> {
+//     fn as_any(&self) -> &dyn Any {
+//         self
+//     }
+// }
 
 pub type ConnectionPool<T> = diesel::r2d2::Pool<ConnectionManager<T>>;
 pub type PooledConnection<T> = diesel::r2d2::PooledConnection<ConnectionManager<T>>;
 
-pub fn new_connection_pool<T: R2D2Connection + 'static>(db_url: &str, pool_size: Option<u32>) -> Result<ConnectionPool<T>, IndexerError>  {
+pub fn new_connection_pool<T: R2D2Connection  + 'static>(db_url: &str, pool_size: Option<u32>) -> Result<ConnectionPool<T>, IndexerError>  {
     let manager = ConnectionManager::<T>::new(db_url);
     let pool_size = pool_size.unwrap_or(100);
     diesel::r2d2::Pool::builder()

@@ -7,6 +7,8 @@ use diesel::OptionalExtension;
 use diesel::{QueryDsl, RunQueryDsl};
 use std::sync::{Arc, Mutex};
 use diesel::r2d2::R2D2Connection;
+use crate::db::PooledConnection;
+use downcast::Any;
 
 use move_core_types::account_address::AccountAddress;
 use move_core_types::language_storage::ModuleId;

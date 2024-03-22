@@ -22,6 +22,7 @@ use crate::{
     },
     types::{IndexerResult, OwnerType},
 };
+use downcast::Any;
 use anyhow::{anyhow, Result};
 use cached::proc_macro::cached;
 use cached::SizedCache;

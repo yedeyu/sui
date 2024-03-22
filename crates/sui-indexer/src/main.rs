@@ -3,7 +3,7 @@
 
 use clap::Parser;
 use tracing::{error, info};
-use sui_indexer::base_db::{get_pg_pool_connection, new_pg_connection_pool, reset_database};
+use sui_indexer::base_db::{get_pg_pool_connection, new_pg_connection_pool};
 use sui_indexer::db::new_connection_pool;
 
 use sui_indexer::errors::IndexerError;
@@ -63,7 +63,7 @@ mod setup_postgres {
         Ok(())
     }
 
-    fn drop_all_tables<T: diesel::Connection>(conn: &mut PgConnection) -> Result<(), diesel::result::Error> {
+    fn drop_all_tables(conn: &mut PgConnection) -> Result<(), diesel::result::Error> {
         info!("Dropping all tables in the database");
         let table_names: Vec<String> = diesel::dsl::sql::<diesel::sql_types::Text>(
             "

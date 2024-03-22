@@ -10,8 +10,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use std::time::Instant;
 use tap::Tap;
-use std::any::{Any, TypeId};
-
+use std::any::{Any as StdAny, TypeId};
+use downcast::Any;
 use async_trait::async_trait;
 use diesel::dsl::max;
 use diesel::upsert::excluded;
@@ -1142,7 +1142,7 @@ impl<T: R2D2Connection> IndexerStore for PgIndexerStore<T> {
         self.module_cache.clone()
     }
 
-    fn as_any(&self) -> &dyn Any {
+    fn as_any(&self) -> &dyn StdAny {
         self
     }
 }
