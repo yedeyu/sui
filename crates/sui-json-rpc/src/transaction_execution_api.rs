@@ -136,42 +136,6 @@ impl TransactionExecutionApi {
         signatures: Vec<Base64>,
         opts: Option<SuiTransactionBlockResponseOptions>,
         request_type: Option<ExecuteTransactionRequestType>,
-    ) -> Result<SuiTransactionBlockResponse, Error> {
-        let (opts, request_type, sender, input_objs, txn, transaction, raw_transaction) =
-            self.prepare_execute_transaction_block(tx_bytes, signatures, opts, request_type)?;
-        let digest = *txn.digest();
-
-        let transaction_orchestrator = self.transaction_orchestrator.clone();
-        let orch_timer = self.metrics.orchestrator_latency_ms.start_timer();
-        let response = spawn_monitored_task!(transaction_orchestrator.execute_transaction_block(
-            ExecuteTransactionRequest {
-                transaction: txn,
-                request_type,
-            },
-            None
-        ))
-        .await?
-        .map_err(Error::from)?;
-        drop(orch_timer);
-
-        self.handle_post_orchestration(
-            response,
-            opts,
-            digest,
-            input_objs,
-            transaction,
-            raw_transaction,
-            sender,
-        )
-        .await
-    }
-
-    async fn monitored_execute_transaction_block(
-        &self,
-        tx_bytes: Base64,
-        signatures: Vec<Base64>,
-        opts: Option<SuiTransactionBlockResponseOptions>,
-        request_type: Option<ExecuteTransactionRequestType>,
         client_addr: Option<SocketAddr>,
     ) -> Result<SuiTransactionBlockResponse, Error> {
         let (opts, request_type, sender, input_objs, txn, transaction, raw_transaction) =
@@ -338,15 +302,12 @@ impl WriteApiServer for TransactionExecutionApi {
     #[instrument(skip(self))]
     async fn execute_transaction_block(
         &self,
-        tx_bytes: Base64,
-        signatures: Vec<Base64>,
-        opts: Option<SuiTransactionBlockResponseOptions>,
-        request_type: Option<ExecuteTransactionRequestType>,
+        _tx_bytes: Base64,
+        _signatures: Vec<Base64>,
+        _opts: Option<SuiTransactionBlockResponseOptions>,
+        _request_type: Option<ExecuteTransactionRequestType>,
     ) -> RpcResult<SuiTransactionBlockResponse> {
-        with_tracing!(Duration::from_secs(10), async move {
-            self.execute_transaction_block(tx_bytes, signatures, opts, request_type)
-                .await
-        })
+        unimplemented!("Use monitored_execute_transaction_block instead")
     }
 
     async fn monitored_execute_transaction_block(
@@ -358,14 +319,8 @@ impl WriteApiServer for TransactionExecutionApi {
         client_addr: Option<SocketAddr>,
     ) -> RpcResult<SuiTransactionBlockResponse> {
         with_tracing!(Duration::from_secs(10), async move {
-            self.monitored_execute_transaction_block(
-                tx_bytes,
-                signatures,
-                opts,
-                request_type,
-                client_addr,
-            )
-            .await
+            self.execute_transaction_block(tx_bytes, signatures, opts, request_type, client_addr)
+                .await
         })
     }
 

@@ -4,17 +4,17 @@
 use std::{collections::HashMap, net::SocketAddr};
 
 use crate::error::{SuiError, SuiResult};
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 use std::fmt::Debug;
+use std::time::SystemTime;
 
 #[derive(Clone, Debug)]
 pub struct TrafficTally {
     pub connection_ip: Option<SocketAddr>,
     pub proxy_ip: Option<SocketAddr>,
     pub result: SuiResult,
-    pub timestamp: DateTime<Utc>,
+    pub timestamp: SystemTime,
 }
 
 // Serializable representation of policy types, used in config

@@ -4,7 +4,6 @@
 
 use anyhow::Result;
 use async_trait::async_trait;
-use chrono::Utc;
 use mysten_metrics::histogram::Histogram as MystenHistogram;
 use mysten_metrics::spawn_monitored_task;
 use narwhal_worker::LazyNarwhalClient;
@@ -12,7 +11,7 @@ use prometheus::{
     register_int_counter_vec_with_registry, register_int_counter_with_registry, IntCounter,
     IntCounterVec, Registry,
 };
-use std::{io, net::SocketAddr, sync::Arc};
+use std::{io, net::SocketAddr, sync::Arc, time::SystemTime};
 use sui_network::{
     api::{Validator, ValidatorServer},
     tonic,
@@ -626,7 +625,7 @@ impl ValidatorService {
     ) -> Result<(), tonic::Status> {
         if !self.traffic_controller.check(connection_ip, proxy_ip).await {
             // Entity in blocklist
-            Err(tonic::Status::from_error(SuiError::TooManyRequests.into()))
+            Err(tonic::Status::resource_exhausted("Too many requests"))
         } else {
             Ok(())
         }
@@ -648,7 +647,7 @@ impl ValidatorService {
             connection_ip,
             proxy_ip,
             result,
-            timestamp: Utc::now(),
+            timestamp: SystemTime::now(),
         });
     }
 }
@@ -671,6 +670,12 @@ macro_rules! handle_with_decoration {
             if cfg!(all(test, not(msim))) {
                 panic!("Failed to get remote address from request");
             } else {
+                // We will hit this case if the IO type used does not
+                // implement Connected or when using a unix domain socket.
+                // TODO: once we have confirmed that no legitimate traffic
+                // is hitting this case, we should reject such requests that
+                // hit this case.
+                // TODO(william) add metric here
                 error!("Failed to get remote address from request");
             }
         }
@@ -681,16 +686,19 @@ macro_rules! handle_with_decoration {
                     Ok(ip) => match ip.parse() {
                         Ok(ret) => Some(ret),
                         Err(e) => {
+                            // TODO(william) add metric here
                             error!("Failed to parse x-forwarded-for header value to SocketAddr: {:?}", e);
-                            None
+                            return Err(tonic::Status::internal("Failed to parse tonic request metadata"));
                         }
                     },
                     Err(e) => {
+                        // TODO(william) add metric here
                         error!("Invalid UTF-8 in x-forwarded-for header: {:?}", e);
-                        None
+                        return Err(tonic::Status::internal("Invalid tonic request metadata"));
                     }
                 }
             } else {
+                // TODO(william) add metric here
                 None
             };
 

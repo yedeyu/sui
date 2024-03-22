@@ -2,19 +2,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::net::SocketAddr;
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
+use dashmap::DashMap;
 use mysten_metrics::spawn_monitored_task;
-use parking_lot::RwLock;
 use std::time::{Duration, SystemTime};
 use sui_types::traffic_control::{
     Policy, PolicyConfig, PolicyResponse, TrafficControlPolicy, TrafficTally,
 };
 use tokio::sync::mpsc;
 use tokio::sync::mpsc::error::TrySendError;
-use tracing::warn;
+use tracing::{info, warn};
 
-type BlocklistT = Arc<RwLock<HashMap<SocketAddr, SystemTime>>>;
+type BlocklistT = Arc<DashMap<SocketAddr, SystemTime>>;
 
 #[derive(Clone)]
 struct Blocklists {
@@ -35,8 +35,8 @@ impl TrafficController {
         let ret = Self {
             tally_channel: tx,
             blocklists: Blocklists {
-                connection_ips: Arc::new(RwLock::new(HashMap::new())),
-                proxy_ips: Arc::new(RwLock::new(HashMap::new())),
+                connection_ips: Arc::new(DashMap::new()),
+                proxy_ips: Arc::new(DashMap::new()),
             },
         };
         let blocklists = ret.blocklists.clone();
@@ -67,25 +67,27 @@ impl TrafficController {
         connection_ip: Option<SocketAddr>,
         proxy_ip: Option<SocketAddr>,
     ) -> bool {
-        match (connection_ip, proxy_ip) {
-            (Some(connection_ip), _) => self.check_and_clear_blocklist(connection_ip, true).await,
-            (_, Some(proxy_ip)) => self.check_and_clear_blocklist(proxy_ip, false).await,
-            _ => true,
-        }
+        let connection_check =
+            self.check_and_clear_blocklist(connection_ip, self.blocklists.connection_ips.clone());
+        let proxy_check =
+            self.check_and_clear_blocklist(proxy_ip, self.blocklists.proxy_ips.clone());
+        let (conn_check, proxy_check) = futures::future::join(connection_check, proxy_check).await;
+        conn_check && proxy_check
     }
 
-    async fn check_and_clear_blocklist(&self, ip: SocketAddr, connection_ips: bool) -> bool {
-        let blocklist = if connection_ips {
-            self.blocklists.connection_ips.clone()
-        } else {
-            self.blocklists.proxy_ips.clone()
+    async fn check_and_clear_blocklist(
+        &self,
+        ip: Option<SocketAddr>,
+        blocklist: BlocklistT,
+    ) -> bool {
+        let ip = match ip {
+            Some(ip) => ip,
+            None => return true,
         };
-
         let now = SystemTime::now();
-        let expiration = blocklist.read().get(&ip).copied();
-        match expiration {
-            Some(expiration) if now >= expiration => {
-                blocklist.write().remove(&ip);
+        match blocklist.get(&ip) {
+            Some(expiration) if now >= *expiration => {
+                blocklist.remove(&ip);
                 true
             }
             None => true,
@@ -111,7 +113,8 @@ async fn run_tally_loop(
                     handle_error_tally(&mut error_policy, &policy_config, tally, error_blocklists.clone()).await;
                 }
                 None => {
-                    panic!("TrafficController tally channel closed unexpectedly");
+                    info!("TrafficController tally channel closed by all senders");
+                    return;
                 },
             }
         }
@@ -140,7 +143,6 @@ async fn handle_spam_tally(
     tally: TrafficTally,
     blocklists: Arc<Blocklists>,
 ) {
-    // TODO -- add update of spam blocklist
     handle_tally_impl(policy, config, tally, blocklists).await
 }
 
@@ -155,13 +157,13 @@ async fn handle_tally_impl(
         block_proxy_ip,
     } = policy.handle_tally(tally.clone());
     if let Some(ip) = block_connection_ip {
-        blocklists.connection_ips.write().insert(
+        blocklists.connection_ips.insert(
             ip,
             SystemTime::now() + Duration::from_secs(config.connection_blocklist_ttl_sec),
         );
     }
     if let Some(ip) = block_proxy_ip {
-        blocklists.proxy_ips.write().insert(
+        blocklists.proxy_ips.insert(
             ip,
             SystemTime::now() + Duration::from_secs(config.proxy_blocklist_ttl_sec),
         );
