@@ -373,6 +373,10 @@ impl<'b> GasMeter for GasStatus<'b> {
         )
     }
 
+    fn charge_variant_switch(&mut self, val: impl ValueView) -> PartialVMResult<()> {
+        self.charge_instr_with_size(Opcodes::VARIANT_SWITCH, val.legacy_abstract_memory_size())
+    }
+
     fn charge_read_ref(&mut self, ref_val: impl ValueView) -> PartialVMResult<()> {
         self.charge_instr_with_size(Opcodes::READ_REF, ref_val.legacy_abstract_memory_size())
     }

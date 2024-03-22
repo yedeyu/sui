@@ -1342,6 +1342,7 @@ impl Frame {
             }
             Bytecode::VariantSwitch(jump_table_index) => {
                 let reference = interpreter.operand_stack.pop_as::<VariantRef>()?;
+                gas_meter.charge_variant_switch(&reference)?;
                 let tag = reference.get_tag()?;
                 let JumpTableInner::Full(jump_table) =
                     &function.jump_tables()[jump_table_index.0 as usize].jump_table;
