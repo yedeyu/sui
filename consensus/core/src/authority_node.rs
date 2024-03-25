@@ -398,7 +398,11 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
             .collect::<Vec<_>>();
 
         if !all_ancestors.is_empty() {
-            let additional_blocks = self.dag_state.read().get_blocks(&all_ancestors);
+            // fetch up to 10 blocks
+            let additional_blocks = self
+                .dag_state
+                .read()
+                .get_blocks(&all_ancestors.into_iter().take(10).collect::<Vec<_>>());
             blocks.extend(additional_blocks);
         }
 
