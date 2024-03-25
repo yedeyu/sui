@@ -12,6 +12,7 @@ use crate::{
     block::{BlockRef, VerifiedBlock},
     context::Context,
     error::ConsensusResult,
+    Round,
 };
 
 // Anemo generated stubs for RPCs.
@@ -49,6 +50,7 @@ pub(crate) trait NetworkClient: Send + Sync + 'static {
         &self,
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
+        highest_accepted_rounds: Vec<Round>,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>>;
 }
@@ -63,6 +65,7 @@ pub(crate) trait NetworkService: Send + Sync + 'static {
         &self,
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
+        highest_accepted_rounds: Vec<Round>,
     ) -> ConsensusResult<Vec<Bytes>>;
 }
 
@@ -102,6 +105,8 @@ pub(crate) struct SendBlockResponse {}
 pub(crate) struct FetchBlocksRequest {
     #[prost(bytes = "vec", repeated, tag = "1")]
     block_refs: Vec<Vec<u8>>,
+    #[prost(bytes = "vec", repeated, tag = "2")]
+    highest_accepted_rounds: Vec<Round>,
 }
 
 #[derive(Clone, Serialize, Deserialize, prost::Message)]

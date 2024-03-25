@@ -24,7 +24,7 @@ use crate::context::Context;
 use crate::core_thread::CoreThreadDispatcher;
 use crate::error::{ConsensusError, ConsensusResult};
 use crate::network::NetworkClient;
-use crate::BlockAPI;
+use crate::{BlockAPI, Round};
 use consensus_config::AuthorityIndex;
 
 /// The number of concurrent fetch blocks requests per authority
@@ -196,7 +196,12 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
 
                             // We don't block if the corresponding peer task is saturated - but we rather drop the request. That's ok as the periodic
                             // synchronization task will handle any still missing blocks in next run.
-                            let r = self.fetch_block_senders.get(&peer_index).expect("Fatal error, sender should be present").try_send(blocks_to_fetch).map_err(|err| {
+                            let r = self
+                            .fetch_block_senders
+                            .get(&peer_index)
+                            .expect("Fatal error, sender should be present")
+                            .try_send(blocks_to_fetch)
+                            .map_err(|err| {
                                 match err {
                                     TrySendError::Full(_) => ConsensusError::SynchronizerSaturated(peer_index),
                                     TrySendError::Closed(_) => ConsensusError::Shutdown
@@ -292,9 +297,19 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         loop {
             tokio::select! {
                 Some(block_refs) = receiver.recv(), if requests.len() < FETCH_BLOCKS_CONCURRENCY => {
-                    requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, block_refs, FETCH_REQUEST_TIMEOUT, 1))
+
+                    // get the highest accepted rounds
+                    let highest_rounds = match core_dispatcher.get_highest_accepted_rounds().await {
+                        Ok(rounds) => rounds,
+                        Err(err) => {
+                            debug!("Core is shutting down, synchronizer is shutting down: {err:?}");
+                            return;
+                        }
+                    };
+
+                    requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, block_refs, highest_rounds, FETCH_REQUEST_TIMEOUT, 1))
                 },
-                Some((response, block_refs, retries, _peer)) = requests.next() => {
+                Some((response, block_refs, retries, _peer, highest_rounds)) = requests.next() => {
                     match response {
                         Ok(Ok(blocks)) => {
                             context
@@ -315,7 +330,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                         },
                         Ok(Err(_)) | Err(Elapsed {..}) => {
                             if retries <= MAX_RETRIES {
-                                requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, block_refs, FETCH_REQUEST_TIMEOUT, retries))
+                                requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, block_refs, highest_rounds, FETCH_REQUEST_TIMEOUT, retries))
                             } else {
                                 warn!("Max retries {retries} reached while trying to fetch blocks from peer {peer_index}.");
 
@@ -338,7 +353,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
     async fn process_fetched_blocks(
         serialized_blocks: Vec<Bytes>,
         peer_index: AuthorityIndex,
-        requested_block_refs: BTreeSet<BlockRef>,
+        _requested_block_refs: BTreeSet<BlockRef>,
         core_dispatcher: Arc<D>,
         block_verifier: Arc<V>,
         context: Arc<Context>,
@@ -347,9 +362,9 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
     ) -> ConsensusResult<()> {
         let mut verified_blocks = Vec::new();
 
-        if serialized_blocks.len() > requested_block_refs.len() {
-            return Err(ConsensusError::TooManyFetchedBlocksReturned(peer_index));
-        }
+        //if serialized_blocks.len() > requested_block_refs.len() {
+        //    return Err(ConsensusError::TooManyFetchedBlocksReturned(peer_index));
+        //}
 
         for serialized_block in serialized_blocks {
             let signed_block: SignedBlock =
@@ -371,12 +386,13 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             let verified_block = VerifiedBlock::new_verified(signed_block, serialized_block);
 
             // we want the peer to only respond with blocks that we have asked for.
+            /*
             if !requested_block_refs.contains(&verified_block.reference()) {
                 return Err(ConsensusError::UnexpectedFetchedBlock {
                     index: peer_index,
                     block_ref: verified_block.reference(),
                 });
-            }
+            }*/
 
             verified_blocks.push(verified_block);
         }
@@ -433,6 +449,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         network_client: Arc<C>,
         peer: AuthorityIndex,
         block_refs: BTreeSet<BlockRef>,
+        highest_rounds: Vec<Round>,
         request_timeout: Duration,
         mut retries: u32,
     ) -> (
@@ -440,6 +457,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         BTreeSet<BlockRef>,
         u32,
         AuthorityIndex,
+        Vec<Round>,
     ) {
         let start = Instant::now();
         let resp = timeout(
@@ -447,6 +465,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             network_client.fetch_blocks(
                 peer,
                 block_refs.clone().into_iter().collect::<Vec<_>>(),
+                highest_rounds.clone().into_iter().collect::<Vec<_>>(),
                 request_timeout,
             ),
         )
@@ -458,7 +477,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             sleep_until(start + request_timeout).await;
             retries += 1;
         }
-        (resp, block_refs, retries, peer)
+        (resp, block_refs, retries, peer, highest_rounds)
     }
 
     async fn start_fetch_missing_blocks_task(&mut self) -> ConsensusResult<()> {
@@ -489,7 +508,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 let total_requested = missing_blocks.len();
 
                 // Fetch blocks from peers
-                let results = Self::fetch_blocks_from_authorities(context.clone(), network_client, missing_blocks).await;
+                let results = Self::fetch_blocks_from_authorities(context.clone(), network_client, missing_blocks, core_dispatcher.clone()).await;
 
                 if results.is_empty() {
                     warn!("No results returned while requesting missing blocks");
@@ -521,6 +540,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         context: Arc<Context>,
         network_client: Arc<C>,
         missing_blocks: BTreeSet<BlockRef>,
+        core_dispatcher: Arc<D>,
     ) -> Vec<(BTreeSet<BlockRef>, Vec<Bytes>, AuthorityIndex)> {
         const MAX_PEERS: usize = 3;
 
@@ -549,6 +569,15 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
 
         let mut request_futures = FuturesUnordered::new();
 
+        // get the highest accepted rounds
+        let highest_rounds = match core_dispatcher.get_highest_accepted_rounds().await {
+            Ok(rounds) => rounds,
+            Err(err) => {
+                debug!("Core is shutting down, synchronizer is shutting down: {err:?}");
+                return vec![];
+            }
+        };
+
         // Send the initial requests
         for blocks in missing_blocks.chunks(MAX_FETCH_BLOCKS_PER_REQUEST) {
             let peer = peers
@@ -560,6 +589,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 network_client.clone(),
                 peer,
                 block_refs,
+                highest_rounds.clone(),
                 FETCH_REQUEST_TIMEOUT,
                 1,
             ));
@@ -572,7 +602,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
 
         loop {
             tokio::select! {
-                Some((response, requested_block_refs, _retries, peer_index)) = request_futures.next() =>
+                Some((response, requested_block_refs, _retries, peer_index, highest_rounds)) = request_futures.next() =>
                     match response {
                         Ok(Ok(fetched_blocks)) => {
                             results.push((requested_block_refs, fetched_blocks, peer_index));
@@ -589,6 +619,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                     network_client.clone(),
                                     next_peer,
                                     requested_block_refs,
+                                    highest_rounds,
                                     FETCH_REQUEST_TIMEOUT,
                                     1,
                                 ));
@@ -665,6 +696,10 @@ mod tests {
             lock.clear();
             Ok(result)
         }
+
+        async fn get_highest_accepted_rounds(&self) -> Result<Vec<Round>, CoreError> {
+            Ok(vec![])
+        }
     }
 
     type FetchRequestKey = (Vec<BlockRef>, AuthorityIndex);
@@ -706,6 +741,7 @@ mod tests {
             &self,
             peer: AuthorityIndex,
             block_refs: Vec<BlockRef>,
+            _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,
         ) -> ConsensusResult<Vec<Bytes>> {
             let mut lock = self.fetch_blocks_requests.lock().await;

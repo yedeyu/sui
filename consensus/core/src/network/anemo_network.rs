@@ -39,6 +39,7 @@ use crate::{
     block::{BlockRef, VerifiedBlock},
     context::Context,
     error::{ConsensusError, ConsensusResult},
+    Round,
 };
 
 /// Implements Anemo RPC client for Consensus.
@@ -143,6 +144,7 @@ impl NetworkClient for AnemoClient {
         &self,
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
+        highest_accepted_rounds: Vec<Round>,
         timeout: Duration,
     ) -> ConsensusResult<Vec<Bytes>> {
         let mut client = self.get_client(peer, timeout).await?;
@@ -157,6 +159,7 @@ impl NetworkClient for AnemoClient {
                     }
                 })
                 .collect(),
+            highest_accepted_rounds,
         };
         let response = client
             .fetch_blocks(anemo::Request::new(request).with_timeout(timeout))
@@ -233,8 +236,8 @@ impl<S: NetworkService> ConsensusRpc for AnemoServiceProxy<S> {
                 "peer not found",
             )
         })?;
-        let block_refs = request
-            .into_body()
+        let body = request.into_body();
+        let block_refs = body
             .block_refs
             .into_iter()
             .filter_map(|serialized| match bcs::from_bytes(&serialized) {
@@ -245,9 +248,12 @@ impl<S: NetworkService> ConsensusRpc for AnemoServiceProxy<S> {
                 }
             })
             .collect();
+
+        let highest_accepted_rounds = body.highest_accepted_rounds;
+
         let blocks = self
             .service
-            .handle_fetch_blocks(*index, block_refs)
+            .handle_fetch_blocks(*index, block_refs, highest_accepted_rounds)
             .await
             .map_err(|e| {
                 anemo::rpc::Status::new_with_message(
@@ -615,6 +621,7 @@ mod test {
         context::Context,
         error::ConsensusResult,
         network::{anemo_network::AnemoManager, NetworkClient, NetworkManager, NetworkService},
+        Round,
     };
 
     struct TestService {
@@ -646,6 +653,7 @@ mod test {
             &self,
             peer: AuthorityIndex,
             block_refs: Vec<BlockRef>,
+            _highest_accepted_rounds: Vec<Round>,
         ) -> ConsensusResult<Vec<Bytes>> {
             self.lock().handle_fetch_blocks.push((peer, block_refs));
             Ok(vec![])

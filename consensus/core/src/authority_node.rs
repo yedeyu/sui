@@ -1,6 +1,7 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::collections::BTreeSet;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -35,7 +36,7 @@ use crate::{
     storage::rocksdb_store::RocksDBStore,
     synchronizer::{Synchronizer, SynchronizerHandle},
     transaction::{TransactionClient, TransactionConsumer, TransactionVerifier},
-    CommitConsumer,
+    CommitConsumer, Round,
 };
 
 /// ConsensusAuthority is used by Sui to manage the lifetime of AuthorityNode.
@@ -358,6 +359,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         &self,
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
+        highest_accepted_rounds: Vec<Round>,
     ) -> ConsensusResult<Vec<Bytes>> {
         const MAX_ALLOWED_FETCH_BLOCKS: usize = 200;
 
@@ -379,7 +381,26 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         }
 
         // For now ask dag state directly
-        let blocks = self.dag_state.read().get_blocks(&block_refs);
+        let mut blocks = self.dag_state.read().get_blocks(&block_refs);
+
+        // Get the block parents
+        let all_ancestors = blocks
+            .iter()
+            .flatten()
+            .flat_map(|block| block.ancestors().to_vec())
+            .collect::<BTreeSet<BlockRef>>();
+
+        // Now check if an ancestor's round is higher than the one that the peer has. If yes, then serve
+        // that ancestor block as well
+        let all_ancestors = all_ancestors
+            .into_iter()
+            .filter(|block_ref| highest_accepted_rounds[block_ref.author] < block_ref.round)
+            .collect::<Vec<_>>();
+
+        if !all_ancestors.is_empty() {
+            let additional_blocks = self.dag_state.read().get_blocks(&all_ancestors);
+            blocks.extend(additional_blocks);
+        }
 
         // Return the serialised blocks
         let result = blocks
@@ -451,6 +472,10 @@ mod tests {
         async fn get_missing_blocks(&self) -> Result<BTreeSet<BlockRef>, CoreError> {
             unimplemented!()
         }
+
+        async fn get_highest_accepted_rounds(&self) -> Result<Vec<Round>, CoreError> {
+            unimplemented!()
+        }
     }
 
     #[derive(Default)]
@@ -471,6 +496,7 @@ mod tests {
             &self,
             _peer: AuthorityIndex,
             _block_refs: Vec<BlockRef>,
+            _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,
         ) -> ConsensusResult<Vec<Bytes>> {
             unimplemented!("Unimplemented")

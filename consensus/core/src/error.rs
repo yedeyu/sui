@@ -34,12 +34,14 @@ pub enum ConsensusError {
     #[error("Genesis blocks should not be queried!")]
     UnexpectedGenesisBlockRequested,
 
+    #[allow(unused)]
     #[error("Unexpected block returned while fetching missing blocks")]
     UnexpectedFetchedBlock {
         index: AuthorityIndex,
         block_ref: BlockRef,
     },
 
+    #[allow(unused)]
     #[error("Too many blocks have been returned from authority {0} when requesting to fetch missing blocks")]
     TooManyFetchedBlocksReturned(AuthorityIndex),
 
