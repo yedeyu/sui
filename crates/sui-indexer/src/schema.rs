@@ -8,7 +8,7 @@ diesel::table! {
         event_sequence_number -> Bigint,
         transaction_digest -> Blob,
         checkpoint_sequence_number -> Bigint,
-        senders -> Json,
+        senders -> Array<Nullable<Blob>>,
         package -> Blob,
         module -> Text,
         event_type -> Text,

@@ -21,7 +21,7 @@ use crate::types::IndexedEvent;
 
 #[derive(Queryable, QueryableByName, Insertable, Debug, Clone)]
 #[diesel(table_name = events)]
-pub struct StoredEvent {
+pub struct StoredEvent<T> {
     #[diesel(sql_type = diesel::sql_types::BigInt)]
     pub tx_sequence_number: i64,
 
@@ -34,8 +34,7 @@ pub struct StoredEvent {
     #[diesel(sql_type = diesel::sql_types::BigInt)]
     pub checkpoint_sequence_number: i64,
 
-    #[diesel(sql_type = diesel::sql_types::Array<diesel::sql_types::Nullable<diesel::pg::sql_types::Bytea>>)]
-    pub senders: Vec<Option<Vec<u8>>>,
+    pub senders: T,
 
     #[diesel(sql_type = diesel::sql_types::Bytea)]
     pub package: Vec<u8>,
@@ -53,7 +52,30 @@ pub struct StoredEvent {
     pub bcs: Vec<u8>,
 }
 
-impl From<IndexedEvent> for StoredEvent {
+impl<T> From<IndexedEvent> for StoredEvent<serde_json::Value> {
+    fn from(event: IndexedEvent) -> Self {
+        Self {
+            tx_sequence_number: event.tx_sequence_number as i64,
+            event_sequence_number: event.event_sequence_number as i64,
+            transaction_digest: event.transaction_digest.into_inner().to_vec(),
+            checkpoint_sequence_number: event.checkpoint_sequence_number as i64,
+            senders: serde_json::Value::Array(event
+                .senders
+                .into_iter()
+                .map(|sender| Some(sender.to_vec()))
+                .collect()),
+            package: event.package.to_vec(),
+            module: event.module.clone(),
+            event_type: event.event_type.clone(),
+            bcs: event.bcs.clone(),
+            timestamp_ms: event.timestamp_ms as i64,
+        }
+    }
+}
+
+
+#[cfg(feature = "postgres-feature")]
+impl From<IndexedEvent> for StoredEvent<Vec<Option<Vec<u8>>>> {
     fn from(event: IndexedEvent) -> Self {
         Self {
             tx_sequence_number: event.tx_sequence_number as i64,
@@ -73,6 +95,8 @@ impl From<IndexedEvent> for StoredEvent {
         }
     }
 }
+
+
 
 impl StoredEvent {
     pub fn try_into_sui_event(
@@ -101,7 +125,7 @@ impl StoredEvent {
             None => {
                 return Err(IndexerError::PersistentStorageDataCorruptionError(
                     "Event senders element should not be null".to_string(),
-                ))
+                ));
             }
         };
 

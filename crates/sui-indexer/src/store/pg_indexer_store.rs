@@ -478,11 +478,16 @@ impl<T: R2D2Connection + 'static> PgIndexerStore<T> {
             .checkpoint_db_commit_latency_events_chunks
             .start_timer();
         let len = events.len();
-        let events = events
+        #[cfg(feature = "mysql-feature")]
+            let events = events
+                .into_iter()
+                .map(StoredEvent::<serde_json::Value>::from)
+                .collect::<Vec<_>>();
+        #[cfg(feature = "postgres-feature")]
+            let events = events
             .into_iter()
-            .map(StoredEvent::from)
+            .map(StoredEvent::<Vec<Option<Vec<u8>>>>::from)
             .collect::<Vec<_>>();
-
         transactional_blocking_with_retry!(
             &self.blocking_cp,
             |conn| {
