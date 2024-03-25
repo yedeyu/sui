@@ -98,7 +98,7 @@ impl From<IndexedEvent> for StoredEvent<Vec<Option<Vec<u8>>>> {
 
 
 
-impl StoredEvent {
+impl<T> StoredEvent<T> {
     pub fn try_into_sui_event(
         self,
         module_cache: &impl GetModule,

@@ -8,7 +8,7 @@ diesel::table! {
         event_sequence_number -> Bigint,
         transaction_digest -> Blob,
         checkpoint_sequence_number -> Bigint,
-        senders -> Array<Nullable<Blob>>,
+        senders -> Json,
         package -> Blob,
         module -> Text,
         event_type -> Text,
@@ -16,3 +16,69 @@ diesel::table! {
         bcs -> Blob,
     }
 }
+
+diesel::table! {
+    objects (object_id) {
+        object_id -> Blob,
+        object_version -> Bigint,
+        object_digest -> Blob,
+        checkpoint_sequence_number -> Bigint,
+        owner_type -> Smallint,
+        owner_id -> Nullable<Blob>,
+        object_type -> Nullable<Text>,
+        serialized_object -> Blob,
+        coin_type -> Nullable<Text>,
+        coin_balance -> Nullable<Bigint>,
+        df_kind -> Nullable<Smallint>,
+        df_name -> Nullable<Blob>,
+        df_object_type -> Nullable<Text>,
+        df_object_id -> Nullable<Blob>,
+    }
+}
+
+diesel::table! {
+    objects_history (checkpoint_sequence_number, object_id, object_version) {
+        object_id -> Blob,
+        object_version -> Bigint,
+        object_status -> Smallint,
+        object_digest -> Nullable<Blob>,
+        checkpoint_sequence_number -> Bigint,
+        owner_type -> Nullable<Smallint>,
+        owner_id -> Nullable<Blob>,
+        object_type -> Nullable<Text>,
+        serialized_object -> Nullable<Blob>,
+        coin_type -> Nullable<Text>,
+        coin_balance -> Nullable<Bigint>,
+        df_kind -> Nullable<Smallint>,
+        df_name -> Nullable<Blob>,
+        df_object_type -> Nullable<Text>,
+        df_object_id -> Nullable<Blob>,
+    }
+}
+
+diesel::table! {
+    objects_snapshot (object_id) {
+        object_id -> Blob,
+        object_version -> Bigint,
+        object_status -> Smallint,
+        object_digest -> Nullable<Blob>,
+        checkpoint_sequence_number -> Bigint,
+        owner_type -> Nullable<Smallint>,
+        owner_id -> Nullable<Blob>,
+        object_type -> Nullable<Text>,
+        serialized_object -> Nullable<Blob>,
+        coin_type -> Nullable<Text>,
+        coin_balance -> Nullable<Bigint>,
+        df_kind -> Nullable<Smallint>,
+        df_name -> Nullable<Blob>,
+        df_object_type -> Nullable<Text>,
+        df_object_id -> Nullable<Blob>,
+    }
+}
+
+diesel::allow_tables_to_appear_in_same_query!(
+    events,
+    objects,
+    objects_history,
+    objects_snapshot,
+);
