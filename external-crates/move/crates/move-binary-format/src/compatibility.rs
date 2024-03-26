@@ -12,8 +12,24 @@ use crate::{
 };
 use move_core_types::vm_status::StatusCode;
 
-/// The result of a linking and layout compatibility check. Here is what the different combinations. NOTE that if `check_datatype_layout` is false, type safety over a series of upgrades cannot be guaranteed.
-/// mean:
+// ***************************************************************************
+// ******************* IMPORTANT NOTE ON COMPATIBILITY ***********************
+// ***************************************************************************
+//
+// If `check_datatype_layout` and/or `check_datatype_and_pub_function_linking` is false, type
+// safety over a series of upgrades cannot be guaranteed for either structs or enums. This is
+// because the type could first be removed, and then re-introduced with a diferent layout and/or
+// additional variants in a later upgrade. E.g.,
+// * For enums you could add a new variant even if `disallow_new_variants` is true, by first
+//   removing the enum in an upgrade, and then reintroducing it with a new variant in a later
+//   upgrade.
+// * For structs you could remove a field from a struct and/or add another field by first removing
+//   removing the struct in an upgrade and then reintroducing it with a different layout in a
+//   later upgrade.
+
+/// The result of a linking and layout compatibility check.
+///
+/// Here is what the different combinations of the compatibility flags mean:
 /// `{ check_datatype_and_pub_function_linking: true, check_datatype_layout: true, check_friend_linking: true, check_private_entry_linking: true }`: fully backward compatible
 /// `{ check_datatype_and_pub_function_linking: true, check_datatype_layout: true, check_friend_linking: true, check_private_entry_linking: false }`: Backwards compatible, private entry function signatures can change
 /// `{ check_datatype_and_pub_function_linking: true, check_datatype_layout: true, check_friend_linking: false, check_private_entry_linking: true }`: Backward compatible, exclude the friend module declare and friend functions
@@ -122,7 +138,7 @@ impl Compatibility {
 
         for (name, old_enum) in &old_module.enums {
             let Some(new_enum) = new_module.enums.get(name) else {
-                // Struct not present in new . Existing modules that depend on this enum will fail to link with the new version of the module.
+                // Enum not present in new. Existing modules that depend on this enum will fail to link with the new version of the module.
                 // Also, enum layout cannot be guaranteed transitively, because after
                 // removing the enum, it could be re-added later with a different layout.
                 datatype_and_function_linking = false;
