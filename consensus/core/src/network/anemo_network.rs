@@ -8,6 +8,8 @@ use std::{
     time::Duration,
 };
 
+use anemo::rpc::Status;
+use anemo::types::response::StatusCode;
 use anemo::{types::PeerInfo, PeerId, Response};
 use anemo_tower::{
     auth::{AllowedPeers, RequireAuthorizationLayer},
@@ -164,7 +166,13 @@ impl NetworkClient for AnemoClient {
         let response = client
             .fetch_blocks(anemo::Request::new(request).with_timeout(timeout))
             .await
-            .map_err(|e| ConsensusError::NetworkError(format!("fetch_blocks failed: {e:?}")))?;
+            .map_err(|e: Status| {
+                if e.status() == StatusCode::RequestTimeout {
+                    ConsensusError::NetworkRequestTimeout(format!("fetch_blocks timeout: {e:?}"))
+                } else {
+                    ConsensusError::NetworkError(format!("fetch_blocks failed: {e:?}"))
+                }
+            })?;
         Ok(response.into_body().blocks)
     }
 }

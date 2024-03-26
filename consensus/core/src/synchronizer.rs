@@ -15,7 +15,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
-use tokio::time::{error::Elapsed, sleep, sleep_until, timeout, Instant};
+use tokio::time::{sleep, sleep_until, Instant};
 use tracing::{debug, info, warn};
 
 use crate::block::{BlockRef, SignedBlock, VerifiedBlock};
@@ -327,7 +327,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 },
                 Some((response, block_refs, retries, _peer, highest_rounds)) = requests.next() => {
                     match response {
-                        Ok(Ok(blocks, )) => {
+                        Ok(blocks) => {
                             context
                             .metrics
                             .node_metrics
@@ -344,7 +344,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                 warn!("Error while processing fetched blocks from peer {peer_index}: {err}");
                             }
                         },
-                        Ok(Err(_)) | Err(Elapsed {..}) => {
+                        Err(_) => {
                             if retries <= MAX_RETRIES {
                                 requests.push(Self::fetch_blocks_request(network_client.clone(), peer_index, block_refs, highest_rounds, FETCH_REQUEST_TIMEOUT, retries))
                             } else {
@@ -463,25 +463,23 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         request_timeout: Duration,
         mut retries: u32,
     ) -> (
-        Result<ConsensusResult<Vec<Bytes>>, Elapsed>,
+        ConsensusResult<Vec<Bytes>>,
         BTreeSet<BlockRef>,
         u32,
         AuthorityIndex,
         Vec<Round>,
     ) {
         let start = Instant::now();
-        let resp = timeout(
-            request_timeout,
-            network_client.fetch_blocks(
+        let resp = network_client
+            .fetch_blocks(
                 peer,
                 block_refs.clone().into_iter().collect::<Vec<_>>(),
                 highest_rounds.clone().into_iter().collect::<Vec<_>>(),
                 request_timeout,
-            ),
-        )
-        .await;
+            )
+            .await;
 
-        if matches!(resp, Ok(Err(_))) {
+        if let Err(ConsensusError::NetworkRequestTimeout(_)) = resp {
             // Add a delay before retrying - if that is needed. If request has timed out then eventually
             // this will be a no-op.
             sleep_until(start + request_timeout).await;
@@ -614,7 +612,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             tokio::select! {
                 Some((response, requested_block_refs, _retries, peer_index, highest_rounds)) = request_futures.next() =>
                     match response {
-                        Ok(Ok(fetched_blocks)) => {
+                        Ok(fetched_blocks) => {
                             results.push((requested_block_refs, fetched_blocks, peer_index));
 
                             // no more pending requests are left, just break the loop
@@ -622,7 +620,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                 break;
                             }
                         },
-                        Ok(Err(_)) | Err(Elapsed {..}) => {
+                        Err(_) => {
                             // try again if there is any peer left
                             if let Some(next_peer) = peers.next() {
                                 request_futures.push(Self::fetch_blocks_request(
