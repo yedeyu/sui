@@ -1,7 +1,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::collections::BTreeSet;
 use std::{
     sync::Arc,
     time::{Duration, Instant},
@@ -362,6 +361,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         highest_accepted_rounds: Vec<Round>,
     ) -> ConsensusResult<Vec<Bytes>> {
         const MAX_ALLOWED_FETCH_BLOCKS: usize = 200;
+        const MAX_ADDITIONAL_BLOCKS: usize = 10;
 
         if block_refs.len() > MAX_ALLOWED_FETCH_BLOCKS {
             return Err(ConsensusError::TooManyFetchBlocksRequested(peer));
@@ -383,27 +383,24 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         // For now ask dag state directly
         let mut blocks = self.dag_state.read().get_blocks(&block_refs);
 
-        // Get the block parents
-        let all_ancestors = blocks
-            .iter()
-            .flatten()
-            .flat_map(|block| block.ancestors().to_vec())
-            .collect::<BTreeSet<BlockRef>>();
-
         // Now check if an ancestor's round is higher than the one that the peer has. If yes, then serve
-        // that ancestor block as well
-        let all_ancestors = all_ancestors
-            .into_iter()
-            .filter(|block_ref| highest_accepted_rounds[block_ref.author] < block_ref.round)
-            .collect::<Vec<_>>();
+        // that ancestor blocks up to 10
+        if blocks.len() < MAX_ALLOWED_FETCH_BLOCKS {
+            let to_fetch = MAX_ALLOWED_FETCH_BLOCKS.saturating_sub(blocks.len());
+            let to_fetch = to_fetch.min(MAX_ADDITIONAL_BLOCKS);
 
-        if !all_ancestors.is_empty() {
-            // fetch up to 10 blocks
-            let additional_blocks = self
-                .dag_state
-                .read()
-                .get_blocks(&all_ancestors.into_iter().take(10).collect::<Vec<_>>());
-            blocks.extend(additional_blocks);
+            let all_ancestors = blocks
+                .iter()
+                .flatten()
+                .flat_map(|block| block.ancestors().to_vec())
+                .filter(|block_ref| highest_accepted_rounds[block_ref.author] < block_ref.round)
+                .take(to_fetch)
+                .collect::<Vec<_>>();
+
+            if !all_ancestors.is_empty() {
+                let ancestors = self.dag_state.read().get_blocks(&all_ancestors);
+                blocks.extend(ancestors);
+            }
         }
 
         // Return the serialised blocks

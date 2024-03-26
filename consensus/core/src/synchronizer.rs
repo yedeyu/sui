@@ -38,6 +38,10 @@ const MAX_FETCH_BLOCKS_PER_REQUEST: usize = 200;
 
 const MAX_AUTHORITIES_TO_FETCH_PER_BLOCK: usize = 2;
 
+// Keeps a mapping between the missing blocks that have been instructed to be fecteched and the authorities
+// that are currently fetching them.
+type BlocksToFetchMap = Arc<tokio::sync::Mutex<HashMap<BlockRef, BTreeSet<AuthorityIndex>>>>;
+
 enum Command {
     FetchBlocks {
         missing_block_refs: BTreeSet<BlockRef>,
@@ -77,8 +81,6 @@ impl SynchronizerHandle {
         tasks.abort_all();
     }
 }
-
-type BlocksToFetchMap = Arc<tokio::sync::Mutex<HashMap<BlockRef, BTreeSet<AuthorityIndex>>>>; // maps the blocks that are pending to fetch and the authority indexes that already assigned to fetch
 
 pub(crate) struct Synchronizer<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> {
     context: Arc<Context>,
@@ -162,33 +164,11 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                         Command::FetchBlocks{ missing_block_refs, peer_index, result } => {
                             assert_ne!(peer_index, self.context.own_index, "We should never attempt to fetch blocks from our own node");
 
-                            let hostname = self.context.committee.authority(peer_index).hostname.clone();
+                            // Keep only the max allowed blocks to request. It is ok to reduce here as the scheduler
+                            // task will take care syncing whatever is leftover.
+                            let missing_block_refs = missing_block_refs.into_iter().take(MAX_FETCH_BLOCKS_PER_REQUEST).collect();
 
-                            let mut blocks_to_fetch = BTreeSet::new();
-
-                            {
-                                let mut blocks_to_fetch_lock = self.blocks_to_fetch.lock().await;
-
-                                for block_ref in missing_block_refs {
-                                    // check that the number of authorities that are already instructed to fetch the block is not
-                                    // higher than the allowed and the `peer_index` has not already been instructed to do that.
-                                    if let Some(authorities) = blocks_to_fetch_lock.get_mut(&block_ref) {
-                                        if authorities.len() < MAX_AUTHORITIES_TO_FETCH_PER_BLOCK && !authorities.contains(&peer_index) {
-                                            authorities.insert(peer_index);
-                                            blocks_to_fetch.insert(block_ref);
-                                            self.context
-                                                .metrics
-                                                .node_metrics
-                                                .fetched_blocks_additional_authority
-                                                .with_label_values(&[&hostname]).inc();
-                                        }
-                                    } else {
-                                        blocks_to_fetch_lock.entry(block_ref).or_default().insert(peer_index);
-                                        blocks_to_fetch.insert(block_ref);
-                                    }
-                                }
-                            }
-
+                            let blocks_to_fetch = self.lock_blocks_to_fetch(peer_index, missing_block_refs).await;
                             if blocks_to_fetch.is_empty() {
                                 result.send(Ok(())).ok();
                                 continue;
@@ -208,44 +188,20 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                 }
                             });
 
-                            /*
-                            // pick another peer as well randomly to increase the chances of fetching the blocks in time
-                            let mut all_authorities = self.context.committee.authorities().filter(|(authority_index, _)| *authority_index != peer_index && *authority_index != self.context.own_index).collect::<Vec<_>>();
-                            all_authorities.shuffle(&mut thread_rng());
-
-                            if let Some((authority_index, _authority)) = all_authorities.first() {
-                                let _ = self.fetch_block_senders
-                                .get(authority_index)
-                                .expect("Fatal error, sender should be present")
-                                .try_send(missing_block_refs)
-                                .tap_err(|err|{
-                                    if let TrySendError::Full(refs) = err {
-                                        info!("Second picked authority to fetch blocks is saturated {authority_index}, missing blocks {}", refs.len());
-                                    }
-                                });
-                            }*/
-
                             result.send(r).ok();
                         },
                         Command::KickOffScheduler => {
-                            // If is not already running, then kick off.
-                            if self.fetch_blocks_scheduler_task.is_empty() {
-                                if let Err(err) = self.start_fetch_missing_blocks_task().await {
-                                    debug!("Core is shutting down, synchronizer is shutting down: {err:?}");
-                                    return;
-                                };
-                                scheduler_timeout
-                                .as_mut()
-                                .reset(Instant::now() + SYNCHRONIZER_TIMEOUT);
+                            // just reset the scheduler timeout timer to run immediately if not already running.
+                            // If the scheduler is already running then just reduce the remaining time to run.
+                            let timeout = if self.fetch_blocks_scheduler_task.is_empty() {
+                                Instant::now()
                             } else {
-                                // Otherwise shorten the timeout
-                                let timeout = Instant::now() + SYNCHRONIZER_TIMEOUT.checked_div(2).unwrap();
+                                Instant::now() + SYNCHRONIZER_TIMEOUT.checked_div(2).unwrap()
+                            };
 
-                                if timeout < scheduler_timeout.deadline() {
-                                    scheduler_timeout
-                                    .as_mut()
-                                    .reset(timeout);
-                                }
+                            // only reset if it is earlier than the next deadline
+                            if timeout < scheduler_timeout.deadline() {
+                                scheduler_timeout.as_mut().reset(timeout);
                             }
                         }
                     }
@@ -275,6 +231,66 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     scheduler_timeout
                     .as_mut()
                     .reset(Instant::now() + SYNCHRONIZER_TIMEOUT);
+                }
+            }
+        }
+    }
+
+    /// Locks the blocks to be fetched for the assigned `peer_index`. We want to avoid re-fetching the
+    /// missing blocks from too many authorities at the same time, thus we limited the concurrency
+    /// per block by attempting to lock per block. If a block is already fetched by the maximum allowed
+    /// number of authorities, then the block ref will not be included in the returned set. The method
+    /// returns all the block refs that have been successfully locked and allowed to be fetched.
+    async fn lock_blocks_to_fetch(
+        &self,
+        peer_index: AuthorityIndex,
+        missing_block_refs: BTreeSet<BlockRef>,
+    ) -> BTreeSet<BlockRef> {
+        let hostname = self
+            .context
+            .committee
+            .authority(peer_index)
+            .hostname
+            .clone();
+
+        let mut blocks = BTreeSet::new();
+        let mut blocks_to_fetch_lock = self.blocks_to_fetch.lock().await;
+
+        for block_ref in missing_block_refs {
+            // check that the number of authorities that are already instructed to fetch the block is not
+            // higher than the allowed and the `peer_index` has not already been instructed to do that.
+            let authorities = blocks_to_fetch_lock.entry(block_ref).or_default();
+            if authorities.len() < MAX_AUTHORITIES_TO_FETCH_PER_BLOCK
+                && !authorities.contains(&peer_index)
+            {
+                authorities.insert(peer_index);
+                blocks.insert(block_ref);
+                self.context
+                    .metrics
+                    .node_metrics
+                    .fetched_blocks_additional_authority
+                    .with_label_values(&[&hostname])
+                    .inc();
+            }
+        }
+        blocks
+    }
+
+    async fn unlock_blocks_to_fetch(
+        blocks_to_fetch: BlocksToFetchMap,
+        block_refs: BTreeSet<BlockRef>,
+        peer_index: AuthorityIndex,
+    ) {
+        // Now mark all the blocks as fetched from the map
+        let mut blocks_to_fetch = blocks_to_fetch.lock().await;
+        for block_ref in &block_refs {
+            if let Some(authorities) = blocks_to_fetch.get_mut(block_ref) {
+                // keep only the other authorities
+                authorities.remove(&peer_index);
+
+                // if the last one then just clean up
+                if authorities.is_empty() {
+                    blocks_to_fetch.remove(block_ref);
                 }
             }
         }
@@ -311,7 +327,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 },
                 Some((response, block_refs, retries, _peer, highest_rounds)) = requests.next() => {
                     match response {
-                        Ok(Ok(blocks)) => {
+                        Ok(Ok(blocks, )) => {
                             context
                             .metrics
                             .node_metrics
@@ -335,7 +351,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                                 warn!("Max retries {retries} reached while trying to fetch blocks from peer {peer_index}.");
 
                                 // now release the blocks for the map of blocks to fetch
-                                Self::release_blocks_to_fetch(blocks_to_fetch.clone(), block_refs, peer_index).await;
+                                Self::unlock_blocks_to_fetch(blocks_to_fetch.clone(), block_refs, peer_index).await;
                             }
                         }
                     }
@@ -353,18 +369,25 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
     async fn process_fetched_blocks(
         serialized_blocks: Vec<Bytes>,
         peer_index: AuthorityIndex,
-        _requested_block_refs: BTreeSet<BlockRef>,
+        requested_block_refs: BTreeSet<BlockRef>,
         core_dispatcher: Arc<D>,
         block_verifier: Arc<V>,
         context: Arc<Context>,
         blocks_to_fetch: BlocksToFetchMap,
         commands_sender: Sender<Command>,
     ) -> ConsensusResult<()> {
-        let mut verified_blocks = Vec::new();
+        // The maximum number of blocks that can be additionally fetched from the one requested - those
+        // are potentially missing ancestors.
+        const MAX_ADDITIONAL_BLOCKS: usize = 10;
 
-        //if serialized_blocks.len() > requested_block_refs.len() {
-        //    return Err(ConsensusError::TooManyFetchedBlocksReturned(peer_index));
-        //}
+        let mut verified_blocks = Vec::new();
+        let mut requested_blocks_ancestors = BTreeSet::new();
+
+        if serialized_blocks.len() > MAX_FETCH_BLOCKS_PER_REQUEST
+            || serialized_blocks.len() > requested_block_refs.len() + MAX_ADDITIONAL_BLOCKS
+        {
+            return Err(ConsensusError::TooManyFetchedBlocksReturned(peer_index));
+        }
 
         for serialized_block in serialized_blocks {
             let signed_block: SignedBlock =
@@ -384,24 +407,31 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 return Err(e);
             }
             let verified_block = VerifiedBlock::new_verified(signed_block, serialized_block);
+            if requested_block_refs.contains(&verified_block.reference()) {
+                requested_blocks_ancestors.extend(verified_block.ancestors().to_vec());
+            }
 
-            // we want the peer to only respond with blocks that we have asked for.
-            /*
-            if !requested_block_refs.contains(&verified_block.reference()) {
+            verified_blocks.push(verified_block);
+        }
+
+        for verified_block in &verified_blocks {
+            // we want the peer to only respond with blocks that we have asked for or some parents of
+            // the requested blocks.
+            if !requested_block_refs.contains(&verified_block.reference())
+                && !requested_blocks_ancestors.contains(&verified_block.reference())
+            {
                 return Err(ConsensusError::UnexpectedFetchedBlock {
                     index: peer_index,
                     block_ref: verified_block.reference(),
                 });
-            }*/
-
-            verified_blocks.push(verified_block);
+            }
         }
 
         let block_refs = verified_blocks
             .iter()
             .map(|block| block.reference())
             .collect::<BTreeSet<_>>();
-        Self::release_blocks_to_fetch(blocks_to_fetch, block_refs, peer_index).await;
+        Self::unlock_blocks_to_fetch(blocks_to_fetch, block_refs, peer_index).await;
 
         // Now send them to core for processing. Ignore the returned missing blocks as we don't want
         // this mechanism to keep feedback looping on fetching more blocks. The periodic synchronization
@@ -423,26 +453,6 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
             .inc_by(missing_blocks.len() as u64);
 
         Ok(())
-    }
-
-    async fn release_blocks_to_fetch(
-        blocks_to_fetch: BlocksToFetchMap,
-        block_refs: BTreeSet<BlockRef>,
-        peer_index: AuthorityIndex,
-    ) {
-        // Now mark all the blocks as fetched from the map
-        let mut blocks_to_fetch = blocks_to_fetch.lock().await;
-        for block_ref in &block_refs {
-            if let Some(authorities) = blocks_to_fetch.get_mut(block_ref) {
-                // keep only the other authorities
-                authorities.remove(&peer_index);
-
-                // if the last one then just clean up
-                if authorities.is_empty() {
-                    blocks_to_fetch.remove(block_ref);
-                }
-            }
-        }
     }
 
     async fn fetch_blocks_request(

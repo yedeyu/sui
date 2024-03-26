@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn try_accept_block_returns_missing_blocks_once() {
+    fn try_accept_block_returns_missing_blocks() {
         let (context, _key_pairs) = Context::new_for_test(4);
         let context = Arc::new(context);
         let store = Arc::new(MemStore::new());
@@ -415,11 +415,10 @@ mod tests {
 
         // Take the blocks from round 4 up to 2 (included). Only the first block of each round should return missing
         // ancestors when try to accept
-        for (i, block) in all_blocks
+        for block in all_blocks
             .into_iter()
             .rev()
             .take_while(|block| block.round() >= 2)
-            .enumerate()
         {
             // WHEN
             let (accepted_blocks, missing) = block_manager.try_accept_blocks(vec![block.clone()]);
@@ -427,13 +426,8 @@ mod tests {
             // THEN
             assert!(accepted_blocks.is_empty());
 
-            // Only the first block for each round should return missing blocks. Every other shouldn't
-            if i % 4 == 0 {
-                let block_ancestors = block.ancestors().iter().cloned().collect::<BTreeSet<_>>();
-                assert_eq!(missing, block_ancestors);
-            } else {
-                assert!(missing.is_empty());
-            }
+            let block_ancestors = block.ancestors().iter().cloned().collect::<BTreeSet<_>>();
+            assert_eq!(missing, block_ancestors);
         }
     }
 

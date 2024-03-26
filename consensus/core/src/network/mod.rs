@@ -106,6 +106,8 @@ pub(crate) struct FetchBlocksRequest {
     #[prost(bytes = "vec", repeated, tag = "1")]
     block_refs: Vec<Vec<u8>>,
     #[prost(bytes = "vec", repeated, tag = "2")]
+    // The highest accepted round per authority. The vector represents the round for each authority
+    // and its length should be the same as the committee size.
     highest_accepted_rounds: Vec<Round>,
 }
 
