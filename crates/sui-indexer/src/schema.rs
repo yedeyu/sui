@@ -76,9 +76,26 @@ diesel::table! {
     }
 }
 
+diesel::table! {
+    transactions (tx_sequence_number, checkpoint_sequence_number) {
+        tx_sequence_number -> Bigint,
+        transaction_digest -> Blob,
+        raw_transaction -> Blob,
+        raw_effects -> Blob,
+        checkpoint_sequence_number -> Bigint,
+        timestamp_ms -> Bigint,
+        object_changes -> Json,
+        balance_changes -> Json,
+        events -> Json,
+        transaction_kind -> Smallint,
+        success_command_count -> Smallint,
+    }
+}
+
 diesel::allow_tables_to_appear_in_same_query!(
     events,
     objects,
     objects_history,
     objects_snapshot,
+    transactions,
 );

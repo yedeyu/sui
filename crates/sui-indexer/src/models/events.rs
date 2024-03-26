@@ -28,7 +28,7 @@ pub struct StoredEvent<T> {
     #[diesel(sql_type = diesel::sql_types::BigInt)]
     pub event_sequence_number: i64,
 
-    #[diesel(sql_type = diesel::sql_types::Bytea)]
+    #[diesel(sql_type = diesel::sql_types::Binary)]
     pub transaction_digest: Vec<u8>,
 
     #[diesel(sql_type = diesel::sql_types::BigInt)]
