@@ -53,14 +53,14 @@ impl Drop for BlocksGuard {
 // Keeps a mapping between the missing blocks that have been instructed to be fectched and the authorities
 // that are currently fetching them.
 struct InflightBlocksMap {
-    inner: Mutex<HashMap<BlockRef, BTreeSet<AuthorityIndex>>>,
+    inner: Mutex<HashMap<BlockRef, BTreeMap<AuthorityIndex, u32>>>,
 }
 
 impl InflightBlocksMap {
-    fn new() -> Self {
-        Self {
+    fn new() -> Arc<Self> {
+        Arc::new(Self {
             inner: Mutex::new(HashMap::new()),
-        }
+        })
     }
 
     /// Locks the blocks to be fetched for the assigned `peer_index`. We want to avoid re-fetching the
@@ -68,6 +68,9 @@ impl InflightBlocksMap {
     /// per block by attempting to lock per block. If a block is already fetched by the maximum allowed
     /// number of authorities, then the block ref will not be included in the returned set. The method
     /// returns all the block refs that have been successfully locked and allowed to be fetched.
+    /// If `skip_checks = true` then no checks are made against the max authorities to fetch per block or
+    /// same peer already fetching the same block. This is currently used only from the scheduler to
+    /// allow us attempt fetching the blocks concurrently.
     fn lock_blocks(
         self: &Arc<Self>,
         context: &Context,
@@ -78,17 +81,17 @@ impl InflightBlocksMap {
         let hostname = context.committee.authority(peer).hostname.clone();
 
         let mut blocks = BTreeSet::new();
-        let mut blocks_to_fetch_lock = self.inner.lock();
+        let mut inner = self.inner.lock();
 
         for block_ref in missing_block_refs {
             // check that the number of authorities that are already instructed to fetch the block is not
             // higher than the allowed and the `peer_index` has not already been instructed to do that.
-            let authorities = blocks_to_fetch_lock.entry(block_ref).or_default();
+            let authorities = inner.entry(block_ref).or_default();
             if skip_checks
                 || (authorities.len() < MAX_AUTHORITIES_TO_FETCH_PER_BLOCK
-                    && !authorities.contains(&peer))
+                    && authorities.get(&peer).is_none())
             {
-                authorities.insert(peer);
+                authorities.entry(peer).and_modify(|c| *c += 1).or_insert(1);
                 blocks.insert(block_ref);
                 context
                     .metrics
@@ -110,22 +113,35 @@ impl InflightBlocksMap {
         }
     }
 
+    /// Unlocks the provided block references for the given `peer`.
     fn unlock_blocks(self: &Arc<Self>, block_refs: BTreeSet<BlockRef>, peer: AuthorityIndex) {
         // Now mark all the blocks as fetched from the map
         let mut blocks_to_fetch = self.inner.lock();
         for block_ref in &block_refs {
-            if let Some(authorities) = blocks_to_fetch.get_mut(block_ref) {
-                // keep only the other authorities
-                authorities.remove(&peer);
+            let authorities = blocks_to_fetch
+                .get_mut(block_ref)
+                .expect("Should have found a non empty map");
+            let count = authorities
+                .get_mut(&peer)
+                .expect("Should have found a peer entry");
+            assert!(*count > 0, "Counter for active peers can not be zero");
 
-                // if the last one then just clean up
-                if authorities.is_empty() {
-                    blocks_to_fetch.remove(block_ref);
-                }
+            *count = count.saturating_sub(1);
+
+            // if there is none pending anymore to fetch from this peer, then just remove completely the peer map
+            if *count == 0 {
+                authorities.remove(&peer);
+            }
+
+            // if the last one then just clean up
+            if authorities.is_empty() {
+                blocks_to_fetch.remove(block_ref);
             }
         }
     }
 
+    /// Drops the provided `blocks_guard` which will force to unlock the blocks, and lock now again the
+    /// referenced block refs. This method will acquire the new locks by skipping any checks.
     fn swap_locks(
         self: &Arc<Self>,
         context: &Context,
@@ -140,6 +156,12 @@ impl InflightBlocksMap {
         // Now create new guard
         self.lock_blocks(context, block_refs, peer, true)
             .expect("Guard should have been created successfully")
+    }
+
+    #[cfg(test)]
+    fn num_of_locked_blocks(self: &Arc<Self>) -> usize {
+        let inner = self.inner.lock();
+        inner.len()
     }
 }
 
@@ -210,7 +232,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         block_verifier: Arc<V>,
     ) -> Arc<SynchronizerHandle> {
         let (commands_sender, commands_receiver) = channel(1_000);
-        let inflight_blocks_map = Arc::new(InflightBlocksMap::new());
+        let inflight_blocks_map = InflightBlocksMap::new();
 
         // Spawn the tasks to fetch the blocks from the others
         let mut fetch_block_senders = BTreeMap::new();
@@ -272,9 +294,7 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                             assert_ne!(peer_index, self.context.own_index, "We should never attempt to fetch blocks from our own node");
 
                             let blocks_guard = self.inflight_blocks_map.lock_blocks(&self.context, missing_block_refs, peer_index, false);
-                            let blocks_guard = if let Some(blocks_guard) = blocks_guard {
-                                blocks_guard
-                            } else {
+                            let Some(blocks_guard) = blocks_guard else {
                                 result.send(Ok(())).ok();
                                 continue;
                             };
@@ -723,13 +743,13 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
 
 #[cfg(test)]
 mod tests {
-    use crate::block::{BlockRef, Round, TestBlock, VerifiedBlock};
+    use crate::block::{BlockDigest, BlockRef, Round, TestBlock, VerifiedBlock};
     use crate::block_verifier::NoopBlockVerifier;
     use crate::context::Context;
     use crate::core_thread::{CoreError, CoreThreadDispatcher};
     use crate::error::{ConsensusError, ConsensusResult};
     use crate::network::NetworkClient;
-    use crate::synchronizer::{Synchronizer, FETCH_BLOCKS_CONCURRENCY, FETCH_REQUEST_TIMEOUT};
+    use crate::synchronizer::{Synchronizer, FETCH_BLOCKS_CONCURRENCY, FETCH_REQUEST_TIMEOUT, InflightBlocksMap};
     use async_trait::async_trait;
     use bytes::Bytes;
     use consensus_config::AuthorityIndex;
@@ -844,6 +864,94 @@ mod tests {
             }
 
             Ok((serialised, vec![]))
+        }
+    }
+
+    #[test]
+    fn inflight_blocks_map() {
+        // GIVEN
+        let (context, _) = Context::new_for_test(4);
+        let context = Arc::new(context);
+
+        let map = InflightBlocksMap::new();
+        let some_block_refs = vec![
+             BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
+             BlockRef::new(10, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
+             BlockRef::new(12, AuthorityIndex::new_for_test(3), BlockDigest::MIN),
+             BlockRef::new(15, AuthorityIndex::new_for_test(2), BlockDigest::MIN)];
+        let missing_block_refs = some_block_refs.iter().cloned().collect::<BTreeSet<_>>();
+
+        // Do not skip checks
+        {
+            let mut all_guards = Vec::new();
+
+            // Try to acquire the block locks for authorities 1 & 2
+            for i in 1..=2 {
+                let authority = AuthorityIndex::new_for_test(i);
+
+                let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority, false);
+                let guard = guard.expect("Guard should be created");
+                assert_eq!(guard.block_refs.len(), 4);
+
+                all_guards.push(guard);
+
+                // trying to acquire any of them again will not succeed
+                let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority, false);
+                assert!(guard.is_none());
+            }
+
+            // Trying to acquire for authority 3 it will fail - as we have maxed out the number of allowed peers
+            let authority_3 = AuthorityIndex::new_for_test(3);
+
+            let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority_3, false);
+            assert!(guard.is_none());
+
+            // Explicitly drop the guard of authority 1 and try for authority 3 again - it will now succeed
+            drop(all_guards.remove(0));
+
+            let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority_3, false);
+            let guard = guard.expect("Guard should be successfully acquired");
+
+            assert_eq!(guard.block_refs, missing_block_refs);
+
+            // Dropping all guards should unlock on the block refs
+            drop(guard);
+            drop(all_guards);
+
+            assert_eq!(map.num_of_locked_blocks(), 0);
+        }
+
+        // Skip checks
+        {
+            let mut all_guards = Vec::new();
+            let authority = AuthorityIndex::new_for_test(1);
+
+            // Try to acquire the block locks for authority 1 multiple times
+            for _i in 0..5 {
+
+                let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority, true);
+                let guard = guard.expect("Guard should be created");
+                assert_eq!(guard.block_refs.len(), 4);
+
+                all_guards.push(guard);
+            }
+
+            // Now try to acquire locks without skipping checks
+            let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority, false);
+            assert!(guard.is_none());
+        }
+
+        // Swap locks
+        {
+            // acquire a lock for authority 1
+            let authority_1 = AuthorityIndex::new_for_test(1);
+            let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority_1, false).unwrap();
+
+            // Now swap the locks for authority 2
+            let authority_2 = AuthorityIndex::new_for_test(2);
+            let guard = map.swap_locks(&context, guard, authority_2);
+
+            assert_eq!(guard.block_refs, missing_block_refs);
         }
     }
 
