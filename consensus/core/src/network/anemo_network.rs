@@ -148,7 +148,7 @@ impl NetworkClient for AnemoClient {
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
         timeout: Duration,
-    ) -> ConsensusResult<Vec<Bytes>> {
+    ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)> {
         let mut client = self.get_client(peer, timeout).await?;
         let request = FetchBlocksRequest {
             block_refs: block_refs
@@ -173,7 +173,8 @@ impl NetworkClient for AnemoClient {
                     ConsensusError::NetworkError(format!("fetch_blocks failed: {e:?}"))
                 }
             })?;
-        Ok(response.into_body().blocks)
+        let body = response.into_body();
+        Ok((body.blocks.clone(), body.ancestor_blocks))
     }
 }
 
@@ -259,7 +260,7 @@ impl<S: NetworkService> ConsensusRpc for AnemoServiceProxy<S> {
 
         let highest_accepted_rounds = body.highest_accepted_rounds;
 
-        let blocks = self
+        let (blocks, ancestor_blocks) = self
             .service
             .handle_fetch_blocks(*index, block_refs, highest_accepted_rounds)
             .await
@@ -269,7 +270,10 @@ impl<S: NetworkService> ConsensusRpc for AnemoServiceProxy<S> {
                     format!("{e}"),
                 )
             })?;
-        Ok(Response::new(FetchBlocksResponse { blocks }))
+        Ok(Response::new(FetchBlocksResponse {
+            blocks,
+            ancestor_blocks,
+        }))
     }
 }
 
@@ -662,9 +666,9 @@ mod test {
             peer: AuthorityIndex,
             block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
-        ) -> ConsensusResult<Vec<Bytes>> {
+        ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)> {
             self.lock().handle_fetch_blocks.push((peer, block_refs));
-            Ok(vec![])
+            Ok((vec![], vec![]))
         }
     }
 

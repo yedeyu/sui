@@ -240,7 +240,7 @@ mod test {
             _block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,
-        ) -> ConsensusResult<Vec<Bytes>> {
+        ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)> {
             unimplemented!("Unimplemented")
         }
     }

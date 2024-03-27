@@ -45,14 +45,15 @@ pub(crate) trait NetworkClient: Send + Sync + 'static {
         timeout: Duration,
     ) -> ConsensusResult<()>;
 
-    /// Fetches serialized `SignedBlock`s from a peer.
+    /// Fetches serialized `SignedBlock`s from a peer. It also might return additional ancestor blocks
+    /// of the requested blocks according to the provided `highest_accepted_rounds`.
     async fn fetch_blocks(
         &self,
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
         timeout: Duration,
-    ) -> ConsensusResult<Vec<Bytes>>;
+    ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)>;
 }
 
 /// Network service for handling requests from peers.
@@ -66,7 +67,7 @@ pub(crate) trait NetworkService: Send + Sync + 'static {
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
-    ) -> ConsensusResult<Vec<Bytes>>;
+    ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)>;
 }
 
 /// An `AuthorityNode` holds a `NetworkManager` until shutdown.
@@ -113,7 +114,10 @@ pub(crate) struct FetchBlocksRequest {
 
 #[derive(Clone, Serialize, Deserialize, prost::Message)]
 pub(crate) struct FetchBlocksResponse {
-    // Serialized SignedBlock.
+    // The response of the requested blocks as Serialized SignedBlock.
     #[prost(bytes = "bytes", repeated, tag = "1")]
     blocks: Vec<Bytes>,
+    // Any additional ancestor blocks
+    #[prost(bytes = "bytes", repeated, tag = "2")]
+    ancestor_blocks: Vec<Bytes>,
 }

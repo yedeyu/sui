@@ -359,7 +359,7 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         peer: AuthorityIndex,
         block_refs: Vec<BlockRef>,
         highest_accepted_rounds: Vec<Round>,
-    ) -> ConsensusResult<Vec<Bytes>> {
+    ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)> {
         const MAX_ALLOWED_FETCH_BLOCKS: usize = 200;
         const MAX_ADDITIONAL_BLOCKS: usize = 10;
 
@@ -381,36 +381,37 @@ impl<C: CoreThreadDispatcher> NetworkService for AuthorityService<C> {
         }
 
         // For now ask dag state directly
-        let mut blocks = self.dag_state.read().get_blocks(&block_refs);
+        let blocks = self.dag_state.read().get_blocks(&block_refs);
 
         // Now check if an ancestor's round is higher than the one that the peer has. If yes, then serve
         // that ancestor blocks up to 10
-        if blocks.len() < MAX_ALLOWED_FETCH_BLOCKS {
-            let to_fetch = MAX_ALLOWED_FETCH_BLOCKS.saturating_sub(blocks.len());
-            let to_fetch = to_fetch.min(MAX_ADDITIONAL_BLOCKS);
+        let all_ancestors = blocks
+            .iter()
+            .flatten()
+            .flat_map(|block| block.ancestors().to_vec())
+            .filter(|block_ref| highest_accepted_rounds[block_ref.author] < block_ref.round)
+            .take(MAX_ADDITIONAL_BLOCKS)
+            .collect::<Vec<_>>();
 
-            let all_ancestors = blocks
-                .iter()
-                .flatten()
-                .flat_map(|block| block.ancestors().to_vec())
-                .filter(|block_ref| highest_accepted_rounds[block_ref.author] < block_ref.round)
-                .take(to_fetch)
-                .collect::<Vec<_>>();
-
-            if !all_ancestors.is_empty() {
-                let ancestors = self.dag_state.read().get_blocks(&all_ancestors);
-                blocks.extend(ancestors);
-            }
+        let mut ancestor_blocks = vec![];
+        if !all_ancestors.is_empty() {
+            ancestor_blocks = self.dag_state.read().get_blocks(&all_ancestors);
         }
 
-        // Return the serialised blocks
+        // Return the serialised blocks & the ancestor blocks
         let result = blocks
             .into_iter()
             .flatten()
             .map(|block| block.serialized().clone())
             .collect::<Vec<_>>();
 
-        Ok(result)
+        let result_ancestors = ancestor_blocks
+            .into_iter()
+            .flatten()
+            .map(|block| block.serialized().clone())
+            .collect::<Vec<_>>();
+
+        Ok((result, result_ancestors))
     }
 }
 
@@ -499,7 +500,7 @@ mod tests {
             _block_refs: Vec<BlockRef>,
             _highest_accepted_rounds: Vec<Round>,
             _timeout: Duration,
-        ) -> ConsensusResult<Vec<Bytes>> {
+        ) -> ConsensusResult<(Vec<Bytes>, Vec<Bytes>)> {
             unimplemented!("Unimplemented")
         }
     }
