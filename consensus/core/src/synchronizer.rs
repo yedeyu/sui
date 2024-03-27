@@ -15,7 +15,7 @@ use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tokio::sync::oneshot;
 use tokio::task::JoinSet;
-use tokio::time::{sleep, sleep_until, Instant};
+use tokio::time::{sleep, sleep_until, timeout, Instant};
 use tracing::{debug, info, warn};
 
 use crate::block::{BlockRef, SignedBlock, VerifiedBlock};
@@ -473,6 +473,9 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
 
         blocks.extend(ancestor_blocks);
 
+        // now release all the locked blocks as they have been fetched and verified
+        drop(requested_blocks_guard);
+
         // Now send them to core for processing. Ignore the returned missing blocks as we don't want
         // this mechanism to keep feedback looping on fetching more blocks. The periodic synchronization
         // will take care of that.
@@ -489,9 +492,6 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                 warn!("Commands channel is full")
             }
         }
-
-        // now release all the locked blocks
-        drop(requested_blocks_guard);
 
         context
             .metrics
@@ -557,8 +557,9 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
         Vec<Round>,
     ) {
         let start = Instant::now();
-        let resp = network_client
-            .fetch_blocks(
+        let resp = timeout(
+            request_timeout,
+            network_client.fetch_blocks(
                 peer,
                 blocks_guard
                     .block_refs
@@ -567,15 +568,24 @@ impl<C: NetworkClient, V: BlockVerifier, D: CoreThreadDispatcher> Synchronizer<C
                     .collect::<Vec<_>>(),
                 highest_rounds.clone().into_iter().collect::<Vec<_>>(),
                 request_timeout,
-            )
-            .await;
+            ),
+        )
+        .await;
 
-        if let Err(ConsensusError::NetworkRequestTimeout(_)) = resp {
-            // Add a delay before retrying - if that is needed. If request has timed out then eventually
-            // this will be a no-op.
-            sleep_until(start + request_timeout).await;
-            retries += 1;
-        }
+        let resp = match resp {
+            Ok(Err(err)) => {
+                // Add a delay before retrying - if that is needed. If request has timed out then eventually
+                // this will be a no-op.
+                sleep_until(start + request_timeout).await;
+                retries += 1;
+                Err(err)
+            } // network error
+            Err(err) => {
+                // timeout
+                Err(ConsensusError::NetworkRequestTimeout(err.to_string()))
+            }
+            Ok(result) => result,
+        };
         (resp, blocks_guard, retries, peer, highest_rounds)
     }
 
@@ -749,7 +759,9 @@ mod tests {
     use crate::core_thread::{CoreError, CoreThreadDispatcher};
     use crate::error::{ConsensusError, ConsensusResult};
     use crate::network::NetworkClient;
-    use crate::synchronizer::{Synchronizer, FETCH_BLOCKS_CONCURRENCY, FETCH_REQUEST_TIMEOUT, InflightBlocksMap};
+    use crate::synchronizer::{
+        InflightBlocksMap, Synchronizer, FETCH_BLOCKS_CONCURRENCY, FETCH_REQUEST_TIMEOUT,
+    };
     use async_trait::async_trait;
     use bytes::Bytes;
     use consensus_config::AuthorityIndex;
@@ -874,11 +886,12 @@ mod tests {
         let context = Arc::new(context);
 
         let map = InflightBlocksMap::new();
-        let some_block_refs = vec![
-             BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
-             BlockRef::new(10, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
-             BlockRef::new(12, AuthorityIndex::new_for_test(3), BlockDigest::MIN),
-             BlockRef::new(15, AuthorityIndex::new_for_test(2), BlockDigest::MIN)];
+        let some_block_refs = [
+            BlockRef::new(1, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
+            BlockRef::new(10, AuthorityIndex::new_for_test(0), BlockDigest::MIN),
+            BlockRef::new(12, AuthorityIndex::new_for_test(3), BlockDigest::MIN),
+            BlockRef::new(15, AuthorityIndex::new_for_test(2), BlockDigest::MIN),
+        ];
         let missing_block_refs = some_block_refs.iter().cloned().collect::<BTreeSet<_>>();
 
         // Do not skip checks
@@ -928,7 +941,6 @@ mod tests {
 
             // Try to acquire the block locks for authority 1 multiple times
             for _i in 0..5 {
-
                 let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority, true);
                 let guard = guard.expect("Guard should be created");
                 assert_eq!(guard.block_refs.len(), 4);
@@ -939,13 +951,19 @@ mod tests {
             // Now try to acquire locks without skipping checks
             let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority, false);
             assert!(guard.is_none());
+
+            drop(all_guards);
+
+            assert_eq!(map.num_of_locked_blocks(), 0);
         }
 
         // Swap locks
         {
             // acquire a lock for authority 1
             let authority_1 = AuthorityIndex::new_for_test(1);
-            let guard = map.lock_blocks(&context, missing_block_refs.clone(), authority_1, false).unwrap();
+            let guard = map
+                .lock_blocks(&context, missing_block_refs.clone(), authority_1, false)
+                .unwrap();
 
             // Now swap the locks for authority 2
             let authority_2 = AuthorityIndex::new_for_test(2);

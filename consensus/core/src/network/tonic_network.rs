@@ -128,8 +128,11 @@ impl NetworkClient for TonicClient {
                     ConsensusError::NetworkError(format!("fetch_blocks failed: {e:?}"))
                 }
             })?;
-        let inner = response.into_inner();
-        Ok((inner.blocks.clone(), inner.ancestor_blocks))
+        let FetchBlocksResponse {
+            blocks,
+            ancestor_blocks,
+        } = response.into_inner();
+        Ok((blocks, ancestor_blocks))
     }
 }
 
