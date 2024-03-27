@@ -76,7 +76,7 @@ impl BlockManager {
 
     /// Tries to accept the provided blocks assuming that all their causal history exists. The method
     /// returns all the blocks that have been successfully processed in round ascending order, that includes also previously
-    /// suspended blocks that have now been able to get accepted. Method also returns a set with the new missing ancestor blocks.
+    /// suspended blocks that have now been able to get accepted. Method also returns a set with the missing ancestor blocks.
     pub(crate) fn try_accept_blocks(
         &mut self,
         mut blocks: Vec<VerifiedBlock>,
@@ -84,7 +84,6 @@ impl BlockManager {
         blocks.sort_by_key(|b| b.round());
 
         let mut accepted_blocks = vec![];
-        //let missing_blocks_before = self.missing_blocks.clone();
         let mut missing_blocks = BTreeSet::new();
 
         for block in blocks {
@@ -155,16 +154,6 @@ impl BlockManager {
                 accepted_blocks.extend(blocks_to_accept);
             }
         }
-
-        // Newly missed blocks
-        // TODO: make sure that the computation here is bounded either in the byzantine or node fall
-        // back scenario.
-        /*
-        let missing_blocks_after = self
-            .missing_blocks
-            .difference(&missing_blocks_before)
-            .cloned()
-            .collect::<BTreeSet<_>>();*/
 
         self.context
             .metrics
