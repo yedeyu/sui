@@ -461,21 +461,7 @@ impl StateAccumulator {
 
     /// Returns the result of accumulating the live object set, without side effects
     pub fn accumulate_live_object_set(&self, include_wrapped_tombstone: bool) -> Accumulator {
-        let mut acc = Accumulator::default();
-        for live_object in self.store.iter_live_object_set(include_wrapped_tombstone) {
-            match live_object {
-                LiveObject::Normal(object) => {
-                    acc.insert(object.compute_object_reference().2);
-                }
-                LiveObject::Wrapped(key) => {
-                    acc.insert(
-                        bcs::to_bytes(&WrappedObject::new(key.0, key.1))
-                            .expect("Failed to serialize WrappedObject"),
-                    );
-                }
-            }
-        }
-        acc
+        accumulate_live_object_iter(self.store.iter_live_object_set(include_wrapped_tombstone))
     }
 
     pub fn digest_live_object_set(
@@ -498,4 +484,22 @@ impl StateAccumulator {
             .digest()
             .into())
     }
+}
+
+pub fn accumulate_live_object_iter(iter: Box<dyn Iterator<Item = LiveObject> + '_>) -> Accumulator {
+    let mut acc = Accumulator::default();
+    for live_object in iter {
+        match live_object {
+            LiveObject::Normal(object) => {
+                acc.insert(object.compute_object_reference().2);
+            }
+            LiveObject::Wrapped(key) => {
+                acc.insert(
+                    bcs::to_bytes(&WrappedObject::new(key.0, key.1))
+                        .expect("Failed to serialize WrappedObject"),
+                );
+            }
+        }
+    }
+    acc
 }
