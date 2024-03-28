@@ -86,6 +86,7 @@ members = [
   "crates/sui-adapter-transactional-tests",
   "crates/sui-analytics-indexer",
   "crates/sui-analytics-indexer-derive",
+  "crates/sui-security-watchdog",
   "crates/sui-archival",
   "crates/sui-authority-aggregation",
   "crates/sui-aws-orchestrator",
