@@ -50,7 +50,7 @@ contract BridgeConfigTest is BridgeBaseTest {
         uint8 _numSuiDecimals = 1;
         uint8 suiDecimal1 = 8;
         uint8 _numPrices = 1;
-        uint64 price1 = 100_000_0000;
+        uint64 price1 = 100_000_00000000;
 
         bytes memory payload = abi.encodePacked(
             _isNative,
@@ -92,13 +92,13 @@ contract BridgeConfigTest is BridgeBaseTest {
         assertTrue(config.isTokenSupported(10));
         assertEq(config.tokenAddressOf(10), address(10101));
         assertEq(config.tokenSuiDecimalOf(10), 8);
-        assertEq(config.tokenPriceOf(10), 100_000_0000);
+        assertEq(config.tokenPriceOf(10), 100_000_00000000);
     }
 
     function testUpdateTokenPriceWithSignatures() public {
         // Create update tokens payload
         uint8 tokenID = BridgeUtils.ETH;
-        uint64 price = 100_000_0000;
+        uint64 price = 100_000_00000000;
 
         bytes memory payload = abi.encodePacked(tokenID, price);
 
@@ -127,7 +127,7 @@ contract BridgeConfigTest is BridgeBaseTest {
         // test ETH price
         assertEq(config.tokenPriceOf(BridgeUtils.ETH), ETH_PRICE);
         config.updateTokenPriceWithSignatures(signatures, message);
-        assertEq(config.tokenPriceOf(BridgeUtils.ETH), 100_000_0000);
+        assertEq(config.tokenPriceOf(BridgeUtils.ETH), 100_000_00000000);
     }
 
     // An e2e update token price regression test covering message ser/de
