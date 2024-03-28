@@ -112,6 +112,33 @@ const TYPE_STARTS: [Tok; 9] = [
 
 pub static TYPE_START_SET: Lazy<TokenSet> = Lazy::new(|| TokenSet::from(&TYPE_STARTS));
 
+/// Never part of a type (or type parameter)
+const TYPE_STOPS: [Tok; 21] = [
+    Tok::Percent,
+    Tok::LBracket,
+    Tok::RBracket,
+    Tok::Star,
+    Tok::Plus,
+    Tok::Minus,
+    Tok::Slash,
+    Tok::Colon,
+    Tok::Semicolon,
+    Tok::LessEqual,
+    Tok::Equal,
+    Tok::EqualEqual,
+    Tok::EqualEqualGreater,
+    Tok::LessEqualEqualGreater,
+    Tok::GreaterEqual,
+    Tok::Caret,
+    Tok::LBrace,
+    Tok::RBrace,
+    Tok::NumSign,
+    Tok::AtSign,
+    Tok::MinusGreater,
+];
+
+pub static TYPE_STOP_SET: Lazy<TokenSet> = Lazy::new(|| TokenSet::from(&TYPE_STOPS));
+
 // including `Tok::For` here is hack for `#[syntax(for)]` attribute (similar to the one in
 // `syntax::parse_attribute`)
 const ATTR_STARTS: [Tok; 2] = [Tok::Identifier, Tok::For];

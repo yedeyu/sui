@@ -2436,6 +2436,7 @@ fn parse_type_(
     let start_loc = context.tokens.start_loc();
     let t = match context.tokens.peek() {
         Tok::LParen => {
+            context.stop_set.union(&TYPE_STOP_SET);
             let mut ts = parse_comma_list(
                 context,
                 Tok::LParen,
@@ -2444,6 +2445,7 @@ fn parse_type_(
                 parse_type,
                 "a type",
             );
+            context.stop_set.difference(&TYPE_STOP_SET);
             match ts.len() {
                 0 => Type_::Unit,
                 1 => ts.pop().unwrap().value,
@@ -2466,14 +2468,17 @@ fn parse_type_(
                 context.tokens.advance()?;
                 vec![]
             } else {
-                parse_comma_list(
+                context.stop_set.union(&TYPE_STOP_SET);
+                let list = parse_comma_list(
                     context,
                     Tok::Pipe,
                     Tok::Pipe,
                     &TYPE_START_SET,
                     parse_type,
                     "a type",
-                )
+                );
+                context.stop_set.difference(&TYPE_STOP_SET);
+                list
             };
             let result = if context
                 .tokens
@@ -2509,14 +2514,17 @@ fn parse_type_(
             let tys = if context.tokens.peek() == Tok::Less
                 && (!whitespace_sensitive_ty_args || tn.loc.end() as usize == start_loc)
             {
-                parse_comma_list(
+                context.stop_set.union(&TYPE_STOP_SET);
+                let list = parse_comma_list(
                     context,
                     Tok::Less,
                     Tok::Greater,
                     &TYPE_START_SET,
                     parse_type,
                     "a type",
-                )
+                );
+                context.stop_set.difference(&TYPE_STOP_SET);
+                list
             } else {
                 vec![]
             };
@@ -2531,14 +2539,17 @@ fn parse_type_(
 //    OptionalTypeArgs = '<' Comma<Type> ">" | <empty>
 fn parse_optional_type_args(context: &mut Context) -> Result<Option<Vec<Type>>, Box<Diagnostic>> {
     if context.tokens.peek() == Tok::Less {
-        Ok(Some(parse_comma_list(
+        context.stop_set.union(&TYPE_STOP_SET);
+        let list = Ok(Some(parse_comma_list(
             context,
             Tok::Less,
             Tok::Greater,
             &TYPE_START_SET,
             parse_type,
             "a type",
-        )))
+        )));
+        context.stop_set.difference(&TYPE_STOP_SET);
+        list
     } else {
         Ok(None)
     }
@@ -2641,7 +2652,8 @@ fn parse_type_parameter_with_phantom_decl(
 //    OptionalTypeParameters = '<' Comma<TypeParameter> ">" | <empty>
 fn parse_optional_type_parameters(context: &mut Context) -> Vec<(Name, Vec<Ability>)> {
     if context.tokens.peek() == Tok::Less {
-        parse_comma_list(
+        context.stop_set.union(&TYPE_STOP_SET);
+        let list = parse_comma_list(
             context,
             Tok::Less,
             Tok::Greater,
@@ -2652,7 +2664,9 @@ fn parse_optional_type_parameters(context: &mut Context) -> Vec<(Name, Vec<Abili
             ]),
             parse_type_parameter,
             "a type parameter",
-        )
+        );
+        context.stop_set.difference(&TYPE_STOP_SET);
+        list
     } else {
         vec![]
     }
@@ -2664,14 +2678,17 @@ fn parse_struct_type_parameters(
     context: &mut Context,
 ) -> Result<Vec<StructTypeParameter>, Box<Diagnostic>> {
     if context.tokens.peek() == Tok::Less {
-        Ok(parse_comma_list(
+        context.stop_set.union(&TYPE_STOP_SET);
+        let list = Ok(parse_comma_list(
             context,
             Tok::Less,
             Tok::Greater,
             &TokenSet::from([Tok::Identifier, Tok::RestrictedIdentifier]),
             parse_type_parameter_with_phantom_decl,
             "a type parameter",
-        ))
+        ));
+        context.stop_set.difference(&TYPE_STOP_SET);
+        list
     } else {
         Ok(vec![])
     }
@@ -3082,6 +3099,7 @@ fn parse_struct_fields(context: &mut Context) -> Result<StructFields, Box<Diagno
             .env
             .check_feature(current_package, FeatureGate::PositionalFields, loc);
 
+        context.stop_set.union(&TYPE_STOP_SET);
         let list = parse_comma_list(
             context,
             Tok::LParen,
@@ -3090,6 +3108,7 @@ fn parse_struct_fields(context: &mut Context) -> Result<StructFields, Box<Diagno
             parse_positional_field,
             "a type",
         );
+        context.stop_set.difference(&TYPE_STOP_SET);
         Ok(StructFields::Positional(list))
     } else {
         let fields = parse_comma_list(
