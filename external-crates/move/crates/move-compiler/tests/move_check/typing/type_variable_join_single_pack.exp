@@ -1,31 +1,8 @@
-warning[W09006]: unused struct type parameter
-  ┌─ tests/move_check/typing/type_variable_join_single_pack.move:2:16
-  │
-2 │     struct Box<T> copy, drop { f1: T, f2: T }
-  │                ^ Unused type parameter 'T'. Consider declaring it as phantom
-  │
-  = This warning can be suppressed with '#[allow(unused_type_parameter)]' applied to the 'module' or module member ('const', 'fun', or 'struct')
-
 error[E01002]: unexpected token
   ┌─ tests/move_check/typing/type_variable_join_single_pack.move:2:19
   │
 2 │     struct Box<T> copy, drop { f1: T, f2: T }
-  │                   ^^^^
-  │                   │
-  │                   Unexpected 'copy'
-  │                   Expected '{'
-
-error[E03010]: unbound field
-  ┌─ tests/move_check/typing/type_variable_join_single_pack.move:5:17
-  │
-5 │         let b = Box { f1: 0, f2: 1 };
-  │                 ^^^^^^^^^^^^^^^^^^^^ Unbound field 'f1' in '0x42::M::Box'
-
-error[E03010]: unbound field
-  ┌─ tests/move_check/typing/type_variable_join_single_pack.move:5:17
-  │
-5 │         let b = Box { f1: 0, f2: 1 };
-  │                 ^^^^^^^^^^^^^^^^^^^^ Unbound field 'f2' in '0x42::M::Box'
+  │                   ^^^^ Unexpected 'copy'. Expected struct fields, 'has' to start abilities declaration, or ';' for a native struct
 
 error[E05001]: ability constraint not satisfied
   ┌─ tests/move_check/typing/type_variable_join_single_pack.move:6:9
@@ -49,18 +26,6 @@ error[E05001]: ability constraint not satisfied
   │                 -------------------- The type '0x42::M::Box<u64>' does not have the ability 'copy'
 6 │         (*&b: Box<u64>);
   │          ^^^ Invalid dereference. Dereference requires the 'copy' ability
-
-error[E03010]: unbound field
-  ┌─ tests/move_check/typing/type_variable_join_single_pack.move:7:18
-  │
-7 │         let b2 = Box { f1: *&b, f2: b };
-  │                  ^^^^^^^^^^^^^^^^^^^^^^ Unbound field 'f1' in '0x42::M::Box'
-
-error[E03010]: unbound field
-  ┌─ tests/move_check/typing/type_variable_join_single_pack.move:7:18
-  │
-7 │         let b2 = Box { f1: *&b, f2: b };
-  │                  ^^^^^^^^^^^^^^^^^^^^^^ Unbound field 'f2' in '0x42::M::Box'
 
 error[E05001]: ability constraint not satisfied
   ┌─ tests/move_check/typing/type_variable_join_single_pack.move:7:28

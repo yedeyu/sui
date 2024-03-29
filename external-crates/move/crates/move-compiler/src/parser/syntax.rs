@@ -2674,23 +2674,21 @@ fn parse_optional_type_parameters(context: &mut Context) -> Vec<(Name, Vec<Abili
 
 // Parse optional struct type parameters:
 //    StructTypeParameter = '<' Comma<TypeParameterWithPhantomDecl> ">" | <empty>
-fn parse_struct_type_parameters(
-    context: &mut Context,
-) -> Result<Vec<StructTypeParameter>, Box<Diagnostic>> {
+fn parse_struct_type_parameters(context: &mut Context) -> Vec<StructTypeParameter> {
     if context.tokens.peek() == Tok::Less {
         context.stop_set.union(&TYPE_STOP_SET);
-        let list = Ok(parse_comma_list(
+        let list = parse_comma_list(
             context,
             Tok::Less,
             Tok::Greater,
             &TokenSet::from([Tok::Identifier, Tok::RestrictedIdentifier]),
             parse_type_parameter_with_phantom_decl,
             "a type parameter",
-        ));
+        );
         context.stop_set.difference(&TYPE_STOP_SET);
         list
     } else {
-        Ok(vec![])
+        vec![]
     }
 }
 
@@ -2936,7 +2934,11 @@ fn parse_struct_decl(
 
     // <StructDefName>
     let name = StructName(parse_identifier(context)?);
-    let type_parameters = parse_struct_type_parameters(context)?;
+
+    context
+        .stop_set
+        .add_all(&[Tok::LBrace, Tok::LParen, Tok::Semicolon]);
+    let type_parameters = parse_struct_type_parameters(context);
 
     let infix_ability_declaration_loc =
         if context.tokens.peek() == Tok::Identifier && context.tokens.content() == "has" {
@@ -2944,48 +2946,63 @@ fn parse_struct_decl(
         } else {
             None
         };
+
     let mut abilities = if infix_ability_declaration_loc.is_some() {
-        context.tokens.advance()?;
-        parse_list(
-            context,
-            |context| match context.tokens.peek() {
-                Tok::Comma => {
-                    context.tokens.advance()?;
-                    Ok(true)
-                }
-                Tok::LBrace | Tok::Semicolon | Tok::LParen => Ok(false),
-                _ => Err(unexpected_token_error(
-                    context.tokens,
-                    &format!(
-                        "one of: '{}', '{}', '{}', or '{}'",
-                        Tok::Comma,
-                        Tok::LBrace,
-                        Tok::LParen,
-                        Tok::Semicolon
-                    ),
-                )),
-            },
-            parse_ability,
-        )?
+        parse_infix_ability_declarations(context)
+            .map_err(|diag| {
+                context.advance_until_at_stop_set(Some(*diag.clone()));
+                diag
+            })
+            .unwrap_or(vec![])
     } else {
         vec![]
     };
 
-    let fields = match native {
-        Some(loc) => {
-            consume_token(context.tokens, Tok::Semicolon)?;
-            StructFields::Native(loc)
-        }
-        _ => {
-            let fields = parse_struct_fields(context)?;
-            parse_postfix_ability_declarations(
-                infix_ability_declaration_loc,
-                &mut abilities,
-                context,
-            )?;
-            fields
-        }
-    };
+    // we are supposed to start parsing struct fields here
+    if !context
+        .tokens
+        .at_set(&TokenSet::from(&[Tok::LBrace, Tok::LParen, Tok::Semicolon]))
+    {
+        let unexpected_loc = current_token_loc(context.tokens);
+        let msg = if infix_ability_declaration_loc.is_some() {
+            format!(
+                "Unexpected '{}'. Expected struct fields or ';' for a native struct",
+                context.tokens.peek()
+            )
+        } else {
+            format!(
+                "Unexpected '{}'. Expected struct fields, 'has' to start abilities declaration, \
+                 or ';' for a native struct",
+                context.tokens.peek()
+            )
+        };
+        let diag = diag!(Syntax::UnexpectedToken, (unexpected_loc, msg));
+        context.add_diag(diag);
+    }
+
+    if !context.at_stop_set() {
+        // try advancing until we reach fields defnition or the "outer" stop set
+        context.advance_until_at_stop_set(None);
+    }
+
+    context
+        .stop_set
+        .remove_all(&[Tok::LBrace, Tok::LParen, Tok::Semicolon]);
+
+    let mut fields = None;
+    if !context.at_stop_set() {
+        fields = parse_struct_body(
+            context,
+            native,
+            infix_ability_declaration_loc,
+            &mut abilities,
+        )
+        .map_err(|diag| {
+            context.advance_until_at_stop_set(Some(*diag.clone()));
+            diag
+        })
+        .ok();
+    }
 
     let loc = make_loc(
         context.tokens.file_hash(),
@@ -2998,7 +3015,27 @@ fn parse_struct_decl(
         abilities,
         name,
         type_parameters,
-        fields,
+        fields: fields.unwrap_or(StructFields::Native(loc)),
+    })
+}
+
+// Parse either just semicolon (for native structs) or fields and (optional) postfix abilities
+fn parse_struct_body(
+    context: &mut Context,
+    native: Option<Loc>,
+    infix_ability_declaration_loc: Option<Loc>,
+    abilities: &mut Vec<Ability>,
+) -> Result<StructFields, Box<Diagnostic>> {
+    Ok(match native {
+        Some(loc) => {
+            consume_token(context.tokens, Tok::Semicolon)?;
+            StructFields::Native(loc)
+        }
+        _ => {
+            let fields = parse_struct_fields(context)?;
+            parse_postfix_ability_declarations(infix_ability_declaration_loc, abilities, context)?;
+            fields
+        }
     })
 }
 
@@ -3031,6 +3068,35 @@ fn parse_positional_field(context: &mut Context) -> Result<Type, Box<Diagnostic>
         context.add_diag(diag!(Declarations::InvalidStruct, (loc, msg),));
     }
     parse_type(context)
+}
+
+// Parse a infix ability declaration:
+//     "has" <Ability> (, <Ability>)+
+fn parse_infix_ability_declarations(
+    context: &mut Context,
+) -> Result<Vec<Ability>, Box<Diagnostic>> {
+    context.tokens.advance()?;
+    parse_list(
+        context,
+        |context| match context.tokens.peek() {
+            Tok::Comma => {
+                context.tokens.advance()?;
+                Ok(true)
+            }
+            Tok::LBrace | Tok::Semicolon | Tok::LParen => Ok(false),
+            _ => Err(unexpected_token_error(
+                context.tokens,
+                &format!(
+                    "one of: '{}', '{}', '{}', or '{}'",
+                    Tok::Comma,
+                    Tok::LBrace,
+                    Tok::LParen,
+                    Tok::Semicolon
+                ),
+            )),
+        },
+        parse_ability,
+    )
 }
 
 // Parse a postfix ability declaration:

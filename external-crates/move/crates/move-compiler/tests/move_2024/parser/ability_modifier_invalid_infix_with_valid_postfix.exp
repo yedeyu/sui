@@ -12,3 +12,11 @@ error[E01002]: unexpected token
 3 │     struct Foo has {} has copy;
   │                    ^ Unexpected '{'. Expected a type ability, one of: 'copy', 'drop', 'store', or 'key'
 
+error[E01003]: invalid modifier
+  ┌─ tests/move_2024/parser/ability_modifier_invalid_infix_with_valid_postfix.move:3:23
+  │
+3 │     struct Foo has {} has copy;
+  │                ---    ^^^ Duplicate ability declaration. Abilities can be declared before or after the field declarations, but not both.
+  │                │       
+  │                Ability declaration previously given here
+
