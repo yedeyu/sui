@@ -202,7 +202,7 @@ mod checked {
             if check_for_verifier_timeout(&e.major_status()) {
                 return Err(SuiError::ModuleVerificationFailure {
                     error: format!("Verification timed out: {}", e),
-                })
+                });
             }
         } else if let Err(err) = sui_verify_module_metered_check_timeout_only(
             module,
