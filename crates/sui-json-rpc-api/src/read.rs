@@ -11,7 +11,7 @@ use sui_json_rpc_types::{
 };
 use sui_json_rpc_types::{ProtocolConfigResponse, SuiLoadedChildObjectsResponse};
 use sui_open_rpc_macros::open_rpc;
-use sui_types::base_types::{ObjectID, SequenceNumber, TransactionDigest};
+use sui_types::base_types::{ObjectID, SequenceNumber, TransactionDigest, VersionDigest};
 use sui_types::sui_serde::BigInt;
 
 #[open_rpc(namespace = "sui", tag = "Read API")]
@@ -58,6 +58,15 @@ pub trait ReadApi {
         /// options for specifying the content to be returned
         options: Option<SuiObjectDataOptions>,
     ) -> RpcResult<Vec<SuiObjectResponse>>;
+
+    /// Given a list of object IDs, return the latest version and digest for each object.
+    /// If an object does not exist, the corresponding entry in the returned list will be None.
+    /// It is guaranteed that the returned list will have the same length as the input list.
+    #[method(name = "multiGetLatestObjectVersions")]
+    async fn multi_get_latest_object_versions(
+        &self,
+        object_ids: Vec<ObjectID>,
+    ) -> RpcResult<Vec<Option<VersionDigest>>>;
 
     /// Note there is no software-level guarantee/SLA that objects with past versions
     /// can be retrieved by this API, even if the object and version exists/existed.

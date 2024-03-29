@@ -2153,6 +2153,50 @@
       ]
     },
     {
+      "name": "sui_multiGetLatestObjectVersions",
+      "tags": [
+        {
+          "name": "Read API"
+        }
+      ],
+      "description": "Given a list of object IDs, return the latest version and digest for each object. If an object does not exist, the corresponding entry in the returned list will be None. It is guaranteed that the returned list will have the same length as the input list.",
+      "params": [
+        {
+          "name": "object_ids",
+          "required": true,
+          "schema": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ObjectID"
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "Vec<Option<VersionDigest>>",
+        "required": true,
+        "schema": {
+          "type": "array",
+          "items": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": [
+              {
+                "$ref": "#/components/schemas/SequenceNumber"
+              },
+              {
+                "$ref": "#/components/schemas/ObjectDigest"
+              }
+            ],
+            "maxItems": 2,
+            "minItems": 2
+          }
+        }
+      }
+    },
+    {
       "name": "sui_multiGetObjects",
       "tags": [
         {

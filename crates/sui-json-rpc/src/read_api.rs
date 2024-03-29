@@ -34,7 +34,7 @@ use sui_json_rpc_types::{SuiLoadedChildObject, SuiLoadedChildObjectsResponse};
 use sui_open_rpc::Module;
 use sui_protocol_config::{ProtocolConfig, ProtocolVersion};
 use sui_storage::key_value_store::TransactionKeyValueStore;
-use sui_types::base_types::{ObjectID, SequenceNumber, TransactionDigest};
+use sui_types::base_types::{ObjectID, SequenceNumber, TransactionDigest, VersionDigest};
 use sui_types::collection_types::VecMap;
 use sui_types::crypto::AggregateAuthoritySignature;
 use sui_types::digests::TransactionEventsDigest;
@@ -577,6 +577,32 @@ impl ReadApiServer for ReadApi {
                     QUERY_MAX_RESULT_LIMIT.to_string(),
                 ))?
             }
+        })
+    }
+
+    #[instrument(skip(self))]
+    async fn multi_get_latest_object_versions(
+        &self,
+        object_ids: Vec<ObjectID>,
+    ) -> RpcResult<Vec<Option<VersionDigest>>> {
+        // 2048 is the maximum number of input objects allowed in a transaction.
+        // Setting it as the limit so that one can always use one query to get all the latest versions
+        // of a given transaction.
+        const MAX_OBJECT_IDS: usize = 2048;
+        with_tracing!(async move {
+            if object_ids.len() > MAX_OBJECT_IDS {
+                return Err(SuiRpcInputError::SizeLimitExceeded(MAX_OBJECT_IDS.to_string()).into());
+            }
+            let state = self.state.clone();
+            let mut results = vec![];
+            for object_id in &object_ids {
+                let object = state.get_object(object_id).await?;
+                results.push(object.map(|o| {
+                    let oref = o.compute_object_reference();
+                    (oref.1, oref.2)
+                }));
+            }
+            Ok(results)
         })
     }
 
