@@ -866,7 +866,7 @@ impl ToolCommand {
                                 "GCS_SNAPSHOT_SERVICE_ACCOUNT_FILE_PATH",
                             )
                             .ok(),
-                            google_project_id: "fullnode_snapshot_gcs",
+                            google_project_id: Some("fullnode_snapshot_gcs".to_string()),
                             object_store_connection_limit: 200,
                             no_sign_request,
                             ..Default::default()
