@@ -2953,7 +2953,7 @@ fn parse_struct_decl(
                 context.advance_until_stop_set(Some(*diag.clone()));
                 diag
             })
-            .unwrap_or(vec![])
+            .unwrap_or_default()
     } else {
         vec![]
     };
