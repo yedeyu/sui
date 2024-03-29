@@ -52,7 +52,7 @@ impl<'env, 'lexer, 'input> Context<'env, 'lexer, 'input> {
 
     /// Advances tokens until reaching an element of the stop set, recording diagnostics along the
     /// way (including the first optional one passed as an argument).
-    fn advance_until_at_stop_set(&mut self, diag_opt: Option<Diagnostic>) {
+    fn advance_until_stop_set(&mut self, diag_opt: Option<Diagnostic>) {
         if let Some(diag) = diag_opt {
             self.add_diag(diag);
         }
@@ -313,7 +313,7 @@ where
         }
         // advance token past the starting one but something went wrong, still there is a chance
         // parse the rest of the list
-        separated_items_error_advance(
+        advance_separated_items_error(
             context,
             start_token,
             end_token,
@@ -370,7 +370,7 @@ where
                     // expect a commma - since we are not at stop set, consume it or advance to the
                     // next time or end of the list
                     if let Err(diag) = consume_token(context.tokens, Tok::Comma) {
-                        separated_items_error_advance(
+                        advance_separated_items_error(
                             context,
                             start_token,
                             end_token,
@@ -387,7 +387,7 @@ where
                     continue;
                 }
                 Err(diag) => {
-                    separated_items_error_advance(
+                    advance_separated_items_error(
                         context,
                         start_token,
                         end_token,
@@ -404,7 +404,7 @@ where
                 Syntax::UnexpectedToken,
                 (loc, format!("Expected {}", item_description))
             );
-            separated_items_error_advance(
+            advance_separated_items_error(
                 context,
                 start_token,
                 end_token,
@@ -438,7 +438,7 @@ where
 /// Attempts to skip tokens until the end of the item in a series of separated (which started with
 /// an already consumed starting token) - looks for a matched ending token or a token appearing
 /// after the separator. This helper function is used when parsing lists and sequences.
-fn separated_items_error_advance(
+fn advance_separated_items_error(
     context: &mut Context,
     start_token: Tok,
     end_token: Tok,
@@ -1319,7 +1319,7 @@ fn parse_sequence(context: &mut Context) -> Result<Sequence, Box<Diagnostic>> {
                 seq.push(item);
                 last_semicolon_loc = Some(current_token_loc(context.tokens));
                 if let Err(diag) = consume_token(context.tokens, Tok::Semicolon) {
-                    separated_items_error_advance(
+                    advance_separated_items_error(
                         context,
                         Tok::LBrace,
                         Tok::RBrace,
@@ -1334,7 +1334,7 @@ fn parse_sequence(context: &mut Context) -> Result<Sequence, Box<Diagnostic>> {
             }
             Err(diag) => {
                 context.stop_set.remove(Tok::Semicolon);
-                separated_items_error_advance(
+                advance_separated_items_error(
                     context,
                     Tok::LBrace,
                     Tok::RBrace,
@@ -2744,12 +2744,12 @@ fn parse_function_decl(
 
     let return_type = parse_ret_type(context, name)
         .map_err(|diag| {
-            context.advance_until_at_stop_set(Some(*diag.clone()));
+            context.advance_until_stop_set(Some(*diag.clone()));
             diag
         })
         .ok();
     if let Err(diag) = parse_acquires(context) {
-        context.advance_until_at_stop_set(Some(*diag));
+        context.advance_until_stop_set(Some(*diag));
     }
     context.stop_set.remove(Tok::Acquires);
 
@@ -2757,7 +2757,7 @@ fn parse_function_decl(
 
     let body = parse_body(context, native)
         .map_err(|diag| {
-            context.advance_until_at_stop_set(Some(*diag.clone()));
+            context.advance_until_stop_set(Some(*diag.clone()));
             diag
         })
         .ok();
@@ -2845,7 +2845,7 @@ fn parse_body(context: &mut Context, native: Option<Loc>) -> Result<FunctionBody
     match native {
         Some(loc) => {
             if let Err(diag) = consume_token(context.tokens, Tok::Semicolon) {
-                context.advance_until_at_stop_set(Some(*diag));
+                context.advance_until_stop_set(Some(*diag));
             }
             Ok(sp(loc, FunctionBody_::Native))
         }
@@ -2857,7 +2857,7 @@ fn parse_body(context: &mut Context, native: Option<Loc>) -> Result<FunctionBody
                     Err(diag) => {
                         // error advancing past opening brace - assume sequence (likely first)
                         // parsing problem and try skipping it
-                        separated_items_error_advance(
+                        advance_separated_items_error(
                             context,
                             Tok::LBrace,
                             Tok::RBrace,
@@ -2879,7 +2879,7 @@ fn parse_body(context: &mut Context, native: Option<Loc>) -> Result<FunctionBody
                 }
             } else {
                 // not even opening brace - not much of a body to parse
-                context.advance_until_at_stop_set(None);
+                context.advance_until_stop_set(None);
                 (
                     vec![],
                     vec![],
@@ -2950,7 +2950,7 @@ fn parse_struct_decl(
     let mut abilities = if infix_ability_declaration_loc.is_some() {
         parse_infix_ability_declarations(context)
             .map_err(|diag| {
-                context.advance_until_at_stop_set(Some(*diag.clone()));
+                context.advance_until_stop_set(Some(*diag.clone()));
                 diag
             })
             .unwrap_or(vec![])
@@ -2982,7 +2982,7 @@ fn parse_struct_decl(
 
     if !context.at_stop_set() {
         // try advancing until we reach fields defnition or the "outer" stop set
-        context.advance_until_at_stop_set(None);
+        context.advance_until_stop_set(None);
     }
 
     context
@@ -2998,7 +2998,7 @@ fn parse_struct_decl(
             &mut abilities,
         )
         .map_err(|diag| {
-            context.advance_until_at_stop_set(Some(*diag.clone()));
+            context.advance_until_stop_set(Some(*diag.clone()));
             diag
         })
         .ok();
@@ -3634,7 +3634,6 @@ fn parse_module(
     let mut next_mod_attributes = None;
     let mut stop_parsing = false;
     while context.tokens.peek() != Tok::RBrace {
-        let curr_token_loc = context.tokens.current_token_loc();
         context.stop_set.union(&MODULE_MEMBER_OR_MODULE_START_SET);
         match parse_module_member(context) {
             Ok(m) => {
@@ -3659,8 +3658,10 @@ fn parse_module(
                     .stop_set
                     .difference(&MODULE_MEMBER_OR_MODULE_START_SET);
                 context.add_diag(*diag);
-                stop_parsing = next_def_fast_forward(context, curr_token_loc);
-                if stop_parsing {
+                skip_to_next_desired_tok_or_eof(context, &MODULE_MEMBER_OR_MODULE_START_SET);
+                if context.tokens.at(Tok::EOF) || context.tokens.at(Tok::Module) {
+                    // either end of file or next module to potentially be parsed
+                    stop_parsing = true;
                     break;
                 }
             }
@@ -3686,35 +3687,12 @@ fn parse_module(
     Ok((def, next_mod_attributes))
 }
 
-/// Skips tokens until next definition to be parsed (or EOF) is encountered. Returns `true` if no
-/// more parsing should be done (i.e., is possible) after this.
-fn next_def_fast_forward(context: &mut Context, prev_token_loc: Loc) -> bool {
-    let mut stop_parsing = false;
-    let next_tok = skip_to_next_desired_tok_or_eof(context, is_start_of_member_or_module);
-    if next_tok == Tok::EOF
-        || next_tok == Tok::Module
-        || prev_token_loc == context.tokens.current_token_loc()
-    {
-        // either end of file or next module to potentially be parsed; alternatively, token wasn't
-        // advanced by either `parse_module_member` nor by `skip_to_next_member_or_module_or_eof` -
-        // no further parsing is possible (in particular, without this check, compiler tests get
-        // stuck)
-        stop_parsing = true;
-    }
-    stop_parsing
-}
-
 /// Skips tokens until reaching the desired one or EOF. Returns true if further parsing is
 /// impossible and parser should stop.
-fn skip_to_next_desired_tok_or_eof(
-    context: &mut Context,
-    is_desired_tok: fn(Tok, &str) -> bool,
-) -> Tok {
+fn skip_to_next_desired_tok_or_eof(context: &mut Context, desired_tokens: &TokenSet) {
     loop {
-        let tok = context.tokens.peek();
-        let content = context.tokens.content();
-        if tok == Tok::EOF || is_desired_tok(tok, content) {
-            return tok;
+        if context.tokens.at(Tok::EOF) || context.tokens.at_set(desired_tokens) {
+            break;
         }
         if let Err(diag) = context.tokens.advance() {
             // record diagnostics but keep advancing until encountering one of the desired tokens or
@@ -3722,14 +3700,6 @@ fn skip_to_next_desired_tok_or_eof(
             context.add_diag(*diag);
         }
     }
-}
-
-fn is_start_of_member_or_module(tok: Tok, content: &str) -> bool {
-    MODULE_MEMBER_OR_MODULE_START_SET.contains(tok, content)
-}
-
-fn is_start_of_module_or_spec(tok: Tok, _: &str) -> bool {
-    matches!(tok, Tok::Spec | Tok::Module)
 }
 
 /// Parse a single module member. Due to parsing error recovery, when attempting to parse the next
@@ -3872,7 +3842,7 @@ fn parse_file(context: &mut Context) -> Result<Vec<Definition>, Box<Diagnostic>>
             context.add_diag(*diag);
             // skip to the next def and try parsing it if it's there (ignore address blocks as they
             // are pretty much defunct anyway)
-            skip_to_next_desired_tok_or_eof(context, is_start_of_module_or_spec);
+            skip_to_next_desired_tok_or_eof(context, &TokenSet::from(&[Tok::Spec, Tok::Module]));
         }
     }
     Ok(defs)

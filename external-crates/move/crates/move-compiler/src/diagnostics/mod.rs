@@ -536,7 +536,7 @@ impl Diagnostics {
     }
 
     /// Returns true if any diagnostic in the Syntax category have already been recorded.
-    pub fn any_syntax_with_primary_loc(&self, loc: Loc) -> bool {
+    pub fn any_syntax_error_with_primary_loc(&self, loc: Loc) -> bool {
         let Self(Some(inner)) = self else {
             return false;
         };
