@@ -13104,7 +13104,7 @@ dependencies = [
 
 [[package]]
 name = "sui-package-management"
-version = "1.22.0"
+version = "1.23.0"
 dependencies = [
  "anyhow",
  "move-package",

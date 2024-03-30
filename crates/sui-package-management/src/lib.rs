@@ -62,6 +62,8 @@ pub async fn update_lock_file(
             },
         ),
     }?;
-    lock.commit(lock_file)?;
+    lock.commit(lock_file.clone())?;
+    let file_contents = std::fs::read_to_string(lock_file)?;
+    panic!("wrote contents {}", file_contents);
     Ok(())
 }

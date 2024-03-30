@@ -839,6 +839,74 @@ async fn test_package_publish_command() -> Result<(), anyhow::Error> {
 }
 
 #[sim_test]
+async fn test_package_management_on_publish_command() -> Result<(), anyhow::Error> {
+    let mut test_cluster = TestClusterBuilder::new().build().await;
+    let rgp = test_cluster.get_reference_gas_price().await;
+    let address = test_cluster.get_address_0();
+    let context = &mut test_cluster.wallet;
+
+    let client = context.get_client().await?;
+    let object_refs = client
+        .read_api()
+        .get_owned_objects(
+            address,
+            Some(SuiObjectResponseQuery::new_with_options(
+                SuiObjectDataOptions::new()
+                    .with_type()
+                    .with_owner()
+                    .with_previous_transaction(),
+            )),
+            None,
+            None,
+        )
+        .await?
+        .data;
+
+    // Check log output contains all object ids.
+    let gas_obj_id = object_refs.first().unwrap().object().unwrap().object_id;
+
+    // Provide path to well formed package sources
+    let mut package_path = PathBuf::from(TEST_DATA_DIR);
+    package_path.push("dummy_modules_publish");
+    let build_config = BuildConfig::new_for_testing().config;
+    let resp = SuiClientCommands::Publish {
+        package_path,
+        build_config,
+        gas: Some(gas_obj_id),
+        gas_budget: rgp * TEST_ONLY_GAS_UNIT_FOR_PUBLISH,
+        skip_dependency_verification: false,
+        with_unpublished_dependencies: false,
+        serialize_unsigned_transaction: false,
+        serialize_signed_transaction: false,
+    }
+    .execute(context)
+    .await?;
+
+    // Print it out to CLI/logs
+    resp.print(true);
+
+    let obj_ids = if let SuiClientCommandResult::Publish(response) = resp {
+        response
+            .effects
+            .as_ref()
+            .unwrap()
+            .created()
+            .iter()
+            .map(|refe| refe.reference.object_id)
+            .collect::<Vec<_>>()
+    } else {
+        unreachable!("Invalid response");
+    };
+
+    // Check the objects
+    for obj_id in obj_ids {
+        get_parsed_object_assert_existence(obj_id, context).await;
+    }
+
+    Ok(())
+}
+
+#[sim_test]
 async fn test_delete_shared_object() -> Result<(), anyhow::Error> {
     let mut test_cluster = TestClusterBuilder::new().build().await;
     let rgp = test_cluster.get_reference_gas_price().await;
